@@ -62,7 +62,7 @@ class _AdminScreenState extends State<AdminScreen> {
     }).toList();
   }
 
-  /// Diálogo inteligente para Crear o Editar un Producto
+  /// Diálogo inteligente para Crear o Editar un Producto (Diseño Tonal Moderno sin fondos blancos duros)
   void _openProductFormDialog({Product? productToEdit}) {
     final isEditing = productToEdit != null;
 
@@ -76,10 +76,8 @@ class _AdminScreenState extends State<AdminScreen> {
     final descCtrl =
         TextEditingController(text: productToEdit?.description ?? '');
 
-    // Variable para habilitar o deshabilitar control de stock
     bool trackStock = productToEdit?.trackStock ?? true;
 
-    // Campos de cálculo de caja
     final costPriceCtrl = TextEditingController(
         text: productToEdit?.costPrice != null && productToEdit!.costPrice > 0
             ? productToEdit.costPrice.toStringAsFixed(2)
@@ -92,7 +90,6 @@ class _AdminScreenState extends State<AdminScreen> {
             ? productToEdit.profitMargin.toStringAsFixed(0)
             : '');
 
-    // Controladores de precio dual (USD y Bs.)
     final priceUsdCtrl = TextEditingController(
         text: productToEdit?.price != null && productToEdit!.price > 0
             ? productToEdit.price.toStringAsFixed(2)
@@ -102,13 +99,14 @@ class _AdminScreenState extends State<AdminScreen> {
             ? (productToEdit.price * widget.exchangeRate).toStringAsFixed(2)
             : '');
 
-    // Variable de estado para el IVA (16%)
     bool addTax16 = false;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
             double baseUSD =
@@ -145,91 +143,141 @@ class _AdminScreenState extends State<AdminScreen> {
             final units = int.tryParse(unitsCtrl.text) ?? 1;
             final unitCost = units > 0 ? (cost / units) : 0.0;
 
+            InputDecoration customInputDecoration({
+              required String label,
+              String? prefixText,
+              String? suffixText,
+              String? hintText,
+            }) {
+              return InputDecoration(
+                labelText: label,
+                prefixText: prefixText,
+                suffixText: suffixText,
+                hintText: hintText,
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.5),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: theme.colorScheme.primary,
+                    width: 1.5,
+                  ),
+                ),
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              );
+            }
+
             return AlertDialog(
+              backgroundColor: theme.colorScheme.surfaceContainerLow,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+                side: BorderSide(
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                ),
+              ),
               title: Row(
                 children: [
-                  Icon(
-                    isEditing ? Icons.edit_note_rounded : Icons.add_box_rounded,
-                    color: Theme.of(context).colorScheme.primary,
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      isEditing
+                          ? Icons.edit_note_rounded
+                          : Icons.add_box_rounded,
+                      color: theme.colorScheme.onPrimaryContainer,
+                      size: 22,
+                    ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
                   Text(
                     isEditing ? 'Editar Producto' : 'Registrar Nuevo Producto',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
                   ),
                 ],
               ),
               content: SizedBox(
-                width: 620,
+                width: 640,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // 1. Datos Básicos
-                      const Text(
-                        '1. Información General',
+                      Text(
+                        'INFORMACIÓN GENERAL',
                         style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 13),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                          letterSpacing: 0.5,
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       Row(
                         children: [
                           Expanded(
                             flex: 2,
                             child: TextField(
                               controller: nameCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Nombre del Producto *',
-                                border: OutlineInputBorder(),
-                                isDense: true,
+                              decoration: customInputDecoration(
+                                label: 'Nombre del Producto *',
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: TextField(
                               controller: categoryCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Categoría',
+                              decoration: customInputDecoration(
+                                label: 'Categoría',
                                 hintText: 'Ej: Víveres, Bebidas',
-                                border: OutlineInputBorder(),
-                                isDense: true,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: barcodeCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Código de Barras',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                              ),
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: barcodeCtrl,
+                        decoration: customInputDecoration(
+                          label: 'Código de Barras (Opcional)',
+                        ),
                       ),
 
                       const SizedBox(height: 12),
 
-                      // Control de Inventario / Stock (Habilitar o Deshabilitar)
+                      // Control de Inventario / Stock Tonal
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
+                            horizontal: 14, vertical: 10),
                         decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(8),
+                          color: theme.colorScheme.surfaceContainer,
+                          borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                              color: Theme.of(context).colorScheme.outlineVariant),
+                            color: theme.colorScheme.outlineVariant
+                                .withValues(alpha: 0.5),
+                          ),
                         ),
                         child: Row(
                           children: [
@@ -237,10 +285,10 @@ class _AdminScreenState extends State<AdminScreen> {
                               trackStock
                                   ? Icons.inventory_rounded
                                   : Icons.all_inclusive_rounded,
-                              color: Theme.of(context).colorScheme.primary,
-                              size: 22,
+                              color: theme.colorScheme.primary,
+                              size: 24,
                             ),
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -255,10 +303,10 @@ class _AdminScreenState extends State<AdminScreen> {
                                   Text(
                                     trackStock
                                         ? 'Llevar conteo de unidades disponibles'
-                                        : 'Stock ilimitado (no se descontará)',
+                                        : 'Stock ilimitado (disponibilidad continua)',
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: Colors.grey.shade700,
+                                      color: theme.colorScheme.outline,
                                     ),
                                   ),
                                 ],
@@ -273,18 +321,14 @@ class _AdminScreenState extends State<AdminScreen> {
                               },
                             ),
                             if (trackStock) ...[
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 10),
                               SizedBox(
-                                width: 110,
+                                width: 120,
                                 child: TextField(
                                   controller: stockCtrl,
                                   keyboardType: TextInputType.number,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Cantidad *',
-                                    border: OutlineInputBorder(),
-                                    isDense: true,
-                                    filled: true,
-                                    fillColor: Colors.white,
+                                  decoration: customInputDecoration(
+                                    label: 'Cantidad *',
                                   ),
                                 ),
                               ),
@@ -293,34 +337,29 @@ class _AdminScreenState extends State<AdminScreen> {
                         ),
                       ),
 
-                      const SizedBox(height: 16),
-                      const Divider(),
+                      const SizedBox(height: 18),
 
                       // 2. Calculadora de Caja (Opcional)
                       Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(10),
+                          color: theme.colorScheme.surfaceContainer,
+                          borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .outlineVariant
+                            color: theme.colorScheme.outlineVariant
                                 .withValues(alpha: 0.5),
                           ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Row(
+                            Row(
                               children: [
-                                Icon(Icons.inventory_2_outlined, size: 18),
-                                SizedBox(width: 6),
-                                Text(
-                                  '2. Costo por Caja / Bulto (Calculadora Opcional)',
+                                Icon(Icons.inventory_2_outlined,
+                                    size: 18, color: theme.colorScheme.primary),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Costo por Caja / Bulto (Calculadora Opcional)',
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 13,
@@ -328,7 +367,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 12),
                             Row(
                               children: [
                                 Expanded(
@@ -337,11 +376,9 @@ class _AdminScreenState extends State<AdminScreen> {
                                     keyboardType: const TextInputType
                                         .numberWithOptions(decimal: true),
                                     onChanged: (_) => recalculateFromPackage(),
-                                    decoration: const InputDecoration(
-                                      labelText: 'Costo Caja/Bulto (USD)',
+                                    decoration: customInputDecoration(
+                                      label: 'Costo Caja (USD)',
                                       prefixText: r'$ ',
-                                      border: OutlineInputBorder(),
-                                      isDense: true,
                                     ),
                                   ),
                                 ),
@@ -351,10 +388,8 @@ class _AdminScreenState extends State<AdminScreen> {
                                     controller: unitsCtrl,
                                     keyboardType: TextInputType.number,
                                     onChanged: (_) => recalculateFromPackage(),
-                                    decoration: const InputDecoration(
-                                      labelText: 'Unidades en Caja',
-                                      border: OutlineInputBorder(),
-                                      isDense: true,
+                                    decoration: customInputDecoration(
+                                      label: 'Unids en Caja',
                                     ),
                                   ),
                                 ),
@@ -365,24 +400,31 @@ class _AdminScreenState extends State<AdminScreen> {
                                     keyboardType: const TextInputType
                                         .numberWithOptions(decimal: true),
                                     onChanged: (_) => recalculateFromPackage(),
-                                    decoration: const InputDecoration(
-                                      labelText: '% Ganancia Sugerida',
+                                    decoration: customInputDecoration(
+                                      label: '% Ganancia',
                                       suffixText: '%',
-                                      border: OutlineInputBorder(),
-                                      isDense: true,
                                     ),
                                   ),
                                 ),
                               ],
                             ),
                             if (cost > 0 && units > 0) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                '➔ Costo unitario base: \$${unitCost.toStringAsFixed(2)} por unidad',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Theme.of(context).colorScheme.primary,
-                                  fontWeight: FontWeight.w600,
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primaryContainer
+                                      .withValues(alpha: 0.4),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '➔ Costo unitario real: \$${unitCost.toStringAsFixed(2)} por unidad',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: theme.colorScheme.onPrimaryContainer,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ],
@@ -390,22 +432,17 @@ class _AdminScreenState extends State<AdminScreen> {
                         ),
                       ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 18),
 
                       // 3. Fijación de Precio de Venta (Dual USD / Bs. e IVA 16%)
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primaryContainer
-                              .withValues(alpha: 0.35),
+                          color: theme.colorScheme.surfaceContainerHigh,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.4),
+                            color: theme.colorScheme.primary
+                                .withValues(alpha: 0.35),
                           ),
                         ),
                         child: Column(
@@ -414,32 +451,43 @@ class _AdminScreenState extends State<AdminScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Row(
+                                Row(
                                   children: [
-                                    Icon(Icons.payments_outlined, size: 20),
-                                    SizedBox(width: 6),
-                                    Text(
-                                      '3. Precio de Venta Unitario',
+                                    Icon(Icons.sell_rounded,
+                                        size: 18,
+                                        color: theme.colorScheme.primary),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Precio de Venta Unitario',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 14,
+                                        fontSize: 13,
                                       ),
                                     ),
                                   ],
                                 ),
-                                Text(
-                                  'Tasa BCV: Bs. ${widget.exchangeRate.toStringAsFixed(2)}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Theme.of(context).colorScheme.primary,
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primaryContainer,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'Tasa BCV: Bs. ${widget.exchangeRate.toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color:
+                                          theme.colorScheme.onPrimaryContainer,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 12),
 
-                            // Inputs interactivos: $ o Bs.
+                            // Inputs interactivos
                             Row(
                               children: [
                                 Expanded(
@@ -457,13 +505,9 @@ class _AdminScreenState extends State<AdminScreen> {
                                             .toStringAsFixed(2);
                                       });
                                     },
-                                    decoration: const InputDecoration(
-                                      labelText: 'Precio en Dólares (\$)',
+                                    decoration: customInputDecoration(
+                                      label: 'Precio en Dólares (\$)',
                                       prefixText: r'$ ',
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                      border: OutlineInputBorder(),
-                                      isDense: true,
                                     ),
                                   ),
                                 ),
@@ -490,13 +534,9 @@ class _AdminScreenState extends State<AdminScreen> {
                                             .toStringAsFixed(2);
                                       });
                                     },
-                                    decoration: const InputDecoration(
-                                      labelText: 'Precio en Bolívares (Bs.)',
+                                    decoration: customInputDecoration(
+                                      label: 'Precio en Bolívares (Bs.)',
                                       prefixText: 'Bs. ',
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                      border: OutlineInputBorder(),
-                                      isDense: true,
                                     ),
                                   ),
                                 ),
@@ -508,12 +548,15 @@ class _AdminScreenState extends State<AdminScreen> {
                             // Selector de IVA (16%)
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 6),
+                                  horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(8),
+                                color: theme.colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
-                                    color: Colors.grey.shade300),
+                                  color: theme.colorScheme.outlineVariant
+                                      .withValues(alpha: 0.5),
+                                ),
                               ),
                               child: Row(
                                 children: [
@@ -543,7 +586,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                               : 'El precio ingresado ya es el monto final (o producto exento)',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: Colors.grey.shade700,
+                                            color: theme.colorScheme.outline,
                                           ),
                                         ),
                                       ],
@@ -559,10 +602,13 @@ class _AdminScreenState extends State<AdminScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: Colors.green.shade50,
+                                color: theme.colorScheme.primaryContainer
+                                    .withValues(alpha: 0.4),
                                 borderRadius: BorderRadius.circular(10),
-                                border:
-                                    Border.all(color: Colors.green.shade400),
+                                border: Border.all(
+                                  color: theme.colorScheme.primary
+                                      .withValues(alpha: 0.4),
+                                ),
                               ),
                               child: Row(
                                 mainAxisAlignment:
@@ -573,19 +619,19 @@ class _AdminScreenState extends State<AdminScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'PRECIO FINAL OFICIAL DE VENTA:',
+                                        'PRECIO FINAL DE VENTA:',
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.green.shade900,
+                                          color: theme.colorScheme.primary,
                                         ),
                                       ),
                                       if (addTax16)
                                         Text(
-                                          'Base: \$${baseUSD.toStringAsFixed(2)} + IVA (16%): \$${(baseUSD * 0.16).toStringAsFixed(2)}',
+                                          'Base: \$${baseUSD.toStringAsFixed(2)} + IVA: \$${(baseUSD * 0.16).toStringAsFixed(2)}',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: Colors.green.shade800,
+                                            color: theme.colorScheme.outline,
                                           ),
                                         ),
                                     ],
@@ -598,7 +644,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                         style: TextStyle(
                                           fontSize: 22,
                                           fontWeight: FontWeight.w900,
-                                          color: Colors.green.shade900,
+                                          color: theme.colorScheme.primary,
                                         ),
                                       ),
                                       Text(
@@ -606,7 +652,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.green.shade800,
+                                          color: Colors.green.shade700,
                                         ),
                                       ),
                                     ],
@@ -675,7 +721,6 @@ class _AdminScreenState extends State<AdminScreen> {
 
                     Navigator.pop(context);
 
-                    // Guardamos en Supabase
                     if (isEditing) {
                       await SupabaseService.updateProduct(newProd);
                     } else {
@@ -912,7 +957,6 @@ class _AdminScreenState extends State<AdminScreen> {
                                             ),
                                           ),
                                         ),
-                                        // Celda de Stock con soporte para ilimitado
                                         DataCell(
                                           product.trackStock
                                               ? Text('${product.stock}')
