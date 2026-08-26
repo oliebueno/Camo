@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import '../models/product.dart';
 
-/// Tarjeta visual para mostrar un producto en el catálogo
-/// Es un StatelessWidget porque solo recibe datos y callbacks (como un componente funcional en React)
+/// Tarjeta visual para mostrar un producto en el catálogo con soporte dual ($ y Bs.) y control de stock
 class ProductCard extends StatelessWidget {
   final Product product;
   final int cartQuantity;
+  final double exchangeRate;
   final VoidCallback onAdd;
   final VoidCallback? onRemove;
 
@@ -13,15 +13,16 @@ class ProductCard extends StatelessWidget {
     super.key,
     required this.product,
     required this.cartQuantity,
+    required this.exchangeRate,
     required this.onAdd,
     this.onRemove,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Obtenemos el esquema de colores del tema actual
     final theme = Theme.of(context);
     final isSelected = cartQuantity > 0;
+    final priceInBs = product.price * exchangeRate;
 
     return Card(
       elevation: isSelected ? 3 : 1,
@@ -40,16 +41,16 @@ class ProductCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // 1. Icono representativo / Imagen según categoría
+            // 1. Icono representativo según categoría
             _buildCategoryIcon(theme),
             const SizedBox(width: 14),
 
-            // 2. Información del producto (Nombre, código, categoría y precio)
+            // 2. Información del producto (Nombre, código, categoría, precio y stock)
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Categoría y Código de barras (Pills sutiles)
+                  // Categoría y Código de barras
                   Row(
                     children: [
                       Container(
@@ -96,9 +97,12 @@ class ProductCard extends StatelessWidget {
 
                   const SizedBox(height: 6),
 
-                  // Precio unitario y Stock
+                  // Precios: $ USD y Bs. en tiempo real
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
                     children: [
+                      // Precio en Dólares
                       Text(
                         '\$${product.price.toStringAsFixed(2)}',
                         style: TextStyle(
@@ -107,17 +111,19 @@ class ProductCard extends StatelessWidget {
                           color: theme.colorScheme.primary,
                         ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 8),
+                      // Precio en Bolívares
                       Text(
-                        'Stock: ${product.stock}',
+                        'Bs. ${priceInBs.toStringAsFixed(2)}',
                         style: TextStyle(
-                          fontSize: 12,
-                          color: product.stock > 10
-                              ? Colors.green.shade700
-                              : Colors.orange.shade800,
-                          fontWeight: FontWeight.w500,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade800,
                         ),
                       ),
+                      const Spacer(),
+                      // Stock condicional
+                      _buildStockWidget(),
                     ],
                   ),
                 ],
@@ -134,7 +140,37 @@ class ProductCard extends StatelessWidget {
     );
   }
 
-  /// Construye el icono visual representativo
+  Widget _buildStockWidget() {
+    if (!product.trackStock) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          'Disponible',
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.blue.shade800,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
+    return Text(
+      'Stock: ${product.stock}',
+      style: TextStyle(
+        fontSize: 12,
+        color: product.stock > 10
+            ? Colors.green.shade700
+            : Colors.orange.shade800,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+
   Widget _buildCategoryIcon(ThemeData theme) {
     IconData icon;
     switch (product.category.toLowerCase()) {
@@ -175,7 +211,6 @@ class ProductCard extends StatelessWidget {
     );
   }
 
-  /// Controles de cantidad: si es 0 muestra botón "+" grande; si ya está en carrito muestra [- 2 +]
   Widget _buildQuantityControls(ThemeData theme) {
     if (cartQuantity == 0) {
       return IconButton.filledTonal(

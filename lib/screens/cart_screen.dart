@@ -3,9 +3,10 @@ import 'package:flutter/services.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 
-/// Pantalla del Carrito y Calculadora de Cobro para el Vendedor
+/// Pantalla del Carrito y Calculadora de Cobro con soporte Bimonetario ($ y Bs.)
 class CartScreen extends StatefulWidget {
   final Map<String, CartItem> cart;
+  final double exchangeRate;
   final Function(Product) onAddToCart;
   final Function(Product) onRemoveFromCart;
   final VoidCallback onClearCart;
@@ -13,6 +14,7 @@ class CartScreen extends StatefulWidget {
   const CartScreen({
     super.key,
     required this.cart,
+    required this.exchangeRate,
     required this.onAddToCart,
     required this.onRemoveFromCart,
     required this.onClearCart,
@@ -23,73 +25,83 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  // Controlador para el efectivo recibido del cliente
+  // Moneda en la que el cliente paga en efectivo ('USD' o 'BS')
+  String _paymentCurrency = 'USD';
+
+  // Controlador para el monto recibido
   final TextEditingController _cashReceivedController = TextEditingController();
   double _cashReceived = 0.0;
 
-  // Opción de IVA / Impuesto (ejemplo: 16% o 0%)
+  // IVA (16% o 0%)
   bool _applyTax = false;
-  final double _taxRate = 0.16; // 16%
+  final double _taxRate = 0.16;
 
-  // Descuento en porcentaje (0% por defecto)
+  // Descuento en %
   double _discountPercent = 0.0;
 
-  /// Subtotal bruto
-  double get _subtotal {
-    return widget.cart.values.fold(0.0, (sum, item) => sum + item.subtotal);
-  }
+  // Cálculos en USD
+  double get _subtotalUSD =>
+      widget.cart.values.fold(0.0, (sum, item) => sum + item.subtotal);
 
-  /// Monto de descuento
-  double get _discountAmount {
-    return _subtotal * (_discountPercent / 100);
-  }
+  double get _discountAmountUSD => _subtotalUSD * (_discountPercent / 100);
 
-  /// Monto de impuesto (IVA)
-  double get _taxAmount {
-    final base = _subtotal - _discountAmount;
+  double get _taxAmountUSD {
+    final base = _subtotalUSD - _discountAmountUSD;
     return _applyTax ? base * _taxRate : 0.0;
   }
 
-  /// Total neto a cobrar
-  double get _totalToPay {
-    return (_subtotal - _discountAmount) + _taxAmount;
-  }
+  double get _totalToPayUSD => (_subtotalUSD - _discountAmountUSD) + _taxAmountUSD;
 
-  /// Cambio / Vuelto a entregar al cliente
-  double get _changeToReturn {
-    if (_cashReceived <= 0) return 0.0;
-    final change = _cashReceived - _totalToPay;
-    return change > 0 ? change : 0.0;
-  }
+  // Cálculos equivalentes en Bolívares (Bs.)
+  double get _subtotalBs => _subtotalUSD * widget.exchangeRate;
+  double get _discountAmountBs => _discountAmountUSD * widget.exchangeRate;
+  double get _taxAmountBs => _taxAmountUSD * widget.exchangeRate;
+  double get _totalToPayBs => _totalToPayUSD * widget.exchangeRate;
 
-  /// Monto restante que falta pagar si el efectivo no alcanza
-  double get _missingAmount {
+  // Cálculo de cambio / faltante según la moneda seleccionada
+  double get _totalRequiredInSelectedCurrency =>
+      _paymentCurrency == 'USD' ? _totalToPayUSD : _totalToPayBs;
+
+  double get _changeToReturnInSelectedCurrency {
     if (_cashReceived <= 0) return 0.0;
-    final diff = _totalToPay - _cashReceived;
+    final diff = _cashReceived - _totalRequiredInSelectedCurrency;
     return diff > 0 ? diff : 0.0;
   }
 
-  /// Genera un resumen en texto para compartir por WhatsApp
+  double get _missingAmountInSelectedCurrency {
+    if (_cashReceived <= 0) return 0.0;
+    final diff = _totalRequiredInSelectedCurrency - _cashReceived;
+    return diff > 0 ? diff : 0.0;
+  }
+
+  /// Genera un resumen completo en texto para compartir por WhatsApp
   void _shareReceipt() {
     final buffer = StringBuffer();
     buffer.writeln('🧾 *RESUMEN DE VENTA - CAMO*');
+    buffer.writeln('💱 Tasa del día: Bs. ${widget.exchangeRate.toStringAsFixed(2)}');
     buffer.writeln('--------------------------------');
     for (final item in widget.cart.values) {
+      final itemBs = item.subtotal * widget.exchangeRate;
       buffer.writeln(
-          '• ${item.quantity}x ${item.product.name} @ \$${item.product.price.toStringAsFixed(2)} = \$${item.subtotal.toStringAsFixed(2)}');
+          '• ${item.quantity}x ${item.product.name}\n  \$${item.subtotal.toStringAsFixed(2)}  (Bs. ${itemBs.toStringAsFixed(2)})');
     }
     buffer.writeln('--------------------------------');
-    buffer.writeln('Subtotal: \$${_subtotal.toStringAsFixed(2)}');
+    buffer.writeln('Subtotal: \$${_subtotalUSD.toStringAsFixed(2)} (Bs. ${_subtotalBs.toStringAsFixed(2)})');
     if (_discountPercent > 0) {
-      buffer.writeln('Descuento (${_discountPercent.toInt()}%): -\$${_discountAmount.toStringAsFixed(2)}');
+      buffer.writeln(
+          'Descuento (${_discountPercent.toInt()}%): -\$${_discountAmountUSD.toStringAsFixed(2)} (-Bs. ${_discountAmountBs.toStringAsFixed(2)})');
     }
     if (_applyTax) {
-      buffer.writeln('IVA (${(_taxRate * 100).toInt()}%): +\$${_taxAmount.toStringAsFixed(2)}');
+      buffer.writeln(
+          'IVA (${(_taxRate * 100).toInt()}%): +\$${_taxAmountUSD.toStringAsFixed(2)} (+Bs. ${_taxAmountBs.toStringAsFixed(2)})');
     }
-    buffer.writeln('*TOTAL: \$${_totalToPay.toStringAsFixed(2)}*');
+    buffer.writeln('--------------------------------');
+    buffer.writeln('*TOTAL USD: \$${_totalToPayUSD.toStringAsFixed(2)}*');
+    buffer.writeln('*TOTAL BS: Bs. ${_totalToPayBs.toStringAsFixed(2)}*');
     if (_cashReceived > 0) {
-      buffer.writeln('Efectivo recibido: \$${_cashReceived.toStringAsFixed(2)}');
-      buffer.writeln('Cambio entregado: \$${_changeToReturn.toStringAsFixed(2)}');
+      final curSymbol = _paymentCurrency == 'USD' ? '\$' : 'Bs. ';
+      buffer.writeln('Pago recibido: $curSymbol${_cashReceived.toStringAsFixed(2)}');
+      buffer.writeln('Cambio entregado: $curSymbol${_changeToReturnInSelectedCurrency.toStringAsFixed(2)}');
     }
     buffer.writeln('--------------------------------');
     buffer.writeln('¡Gracias por su compra!');
@@ -104,7 +116,6 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  /// Diálogo para confirmar vaciar el carrito
   void _confirmClearCart() {
     showDialog(
       context: context,
@@ -195,13 +206,26 @@ class _CartScreenState extends State<CartScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. Lista de productos en el carrito
-                  Text(
-                    'Productos (${items.length})',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  // 1. Lista de productos
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Productos (${items.length})',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'Tasa: Bs. ${widget.exchangeRate.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.outline,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
 
@@ -209,17 +233,17 @@ class _CartScreenState extends State<CartScreen> {
 
                   const SizedBox(height: 20),
 
-                  // 2. Desglose Financiero (Subtotal, Descuentos, IVA, Total)
+                  // 2. Desglose Financiero Bimonetario
                   _buildFinancialBreakdown(theme),
 
                   const SizedBox(height: 20),
 
-                  // 3. Calculadora de Cambio / Vuelto en Efectivo
+                  // 3. Calculadora de Cambio / Vuelto
                   _buildCashChangeCalculator(theme),
 
                   const SizedBox(height: 24),
 
-                  // 4. Botón de Nueva Venta / Completar
+                  // 4. Botones de Acción
                   Row(
                     children: [
                       Expanded(
@@ -260,8 +284,9 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  /// Tarjeta de cada artículo en la lista de compra
   Widget _buildCartItemTile(CartItem item, ThemeData theme) {
+    final itemBs = item.subtotal * widget.exchangeRate;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       elevation: 0,
@@ -286,7 +311,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '\$${item.product.price.toStringAsFixed(2)} c/u',
+                    '\$${item.product.price.toStringAsFixed(2)} (Bs. ${(item.product.price * widget.exchangeRate).toStringAsFixed(2)})',
                     style: TextStyle(
                       fontSize: 12,
                       color: theme.colorScheme.outline,
@@ -296,7 +321,6 @@ class _CartScreenState extends State<CartScreen> {
               ),
             ),
 
-            // Controles de cantidad
             Row(
               children: [
                 IconButton(
@@ -327,16 +351,27 @@ class _CartScreenState extends State<CartScreen> {
 
             const SizedBox(width: 8),
 
-            // Subtotal del item
             SizedBox(
-              width: 65,
-              child: Text(
-                '\$${item.subtotal.toStringAsFixed(2)}',
-                textAlign: TextAlign.right,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+              width: 75,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '\$${item.subtotal.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    'Bs. ${itemBs.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green.shade800,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -345,7 +380,6 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  /// Desglose numérico con subtotal, impuesto y total
   Widget _buildFinancialBreakdown(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -359,10 +393,14 @@ class _CartScreenState extends State<CartScreen> {
       child: Column(
         children: [
           // Subtotal
-          _buildRowDetail('Subtotal', '\$${_subtotal.toStringAsFixed(2)}'),
-          const SizedBox(height: 6),
+          _buildDualRowDetail(
+            'Subtotal',
+            '\$${_subtotalUSD.toStringAsFixed(2)}',
+            'Bs. ${_subtotalBs.toStringAsFixed(2)}',
+          ),
+          const SizedBox(height: 8),
 
-          // Selector de Descuento rápido (0%, 5%, 10%, 15%)
+          // Selector de Descuento
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -386,10 +424,11 @@ class _CartScreenState extends State<CartScreen> {
             ],
           ),
           if (_discountPercent > 0) ...[
-            const SizedBox(height: 4),
-            _buildRowDetail(
+            const SizedBox(height: 6),
+            _buildDualRowDetail(
               'Ahorro (${_discountPercent.toInt()}%)',
-              '-\$${_discountAmount.toStringAsFixed(2)}',
+              '-\$${_discountAmountUSD.toStringAsFixed(2)}',
+              '-Bs. ${_discountAmountBs.toStringAsFixed(2)}',
               color: Colors.green.shade700,
             ),
           ],
@@ -412,30 +451,48 @@ class _CartScreenState extends State<CartScreen> {
             ],
           ),
           if (_applyTax) ...[
-            _buildRowDetail('IVA (16%)', '+\$${_taxAmount.toStringAsFixed(2)}'),
+            _buildDualRowDetail(
+              'IVA (16%)',
+              '+\$${_taxAmountUSD.toStringAsFixed(2)}',
+              '+Bs. ${_taxAmountBs.toStringAsFixed(2)}',
+            ),
           ],
 
           const Divider(height: 20),
 
-          // Total a pagar
+          // Total a pagar Dual
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               const Text(
                 'TOTAL A COBRAR',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.5,
                 ),
               ),
-              Text(
-                '\$${_totalToPay.toStringAsFixed(2)}',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: theme.colorScheme.primary,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '\$${_totalToPayUSD.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  Text(
+                    'Bs. ${_totalToPayBs.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.green.shade800,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -444,8 +501,9 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  /// Calculadora de efectivo y vuelto
   Widget _buildCashChangeCalculator(ThemeData theme) {
+    final curSymbol = _paymentCurrency == 'USD' ? '\$ ' : 'Bs. ';
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -459,29 +517,52 @@ class _CartScreenState extends State<CartScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(Icons.payments_outlined, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              const Text(
-                'Calculadora de Cambio / Vuelto',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              Row(
+                children: [
+                  Icon(Icons.payments_outlined, color: theme.colorScheme.primary),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Calculadora de Vuelto',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ],
+              ),
+              // Selector de moneda de pago (USD o Bolívares)
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'USD', label: Text('\$ USD')),
+                  ButtonSegment(value: 'BS', label: Text('Bs.')),
+                ],
+                selected: {_paymentCurrency},
+                onSelectionChanged: (val) {
+                  setState(() {
+                    _paymentCurrency = val.first;
+                    _cashReceived = 0.0;
+                    _cashReceivedController.clear();
+                  });
+                },
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 12),
 
-          // Input de dinero recibido
           TextField(
             controller: _cashReceivedController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (val) {
               setState(() {
-                _cashReceived = double.tryParse(val) ?? 0.0;
+                _cashReceived = double.tryParse(val.replaceAll(',', '.')) ?? 0.0;
               });
             },
             decoration: InputDecoration(
-              labelText: '¿Con cuánto paga el cliente?',
-              prefixText: '\$ ',
+              labelText: 'Monto recibido del cliente ($_paymentCurrency)',
+              prefixText: curSymbol,
               filled: true,
               fillColor: theme.colorScheme.surface,
               border: OutlineInputBorder(
@@ -492,7 +573,7 @@ class _CartScreenState extends State<CartScreen> {
 
           const SizedBox(height: 8),
 
-          // Botones de billetes rápidos ($5, $10, $20, $50, $100, Exacto)
+          // Botones rápidos según moneda
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -500,22 +581,26 @@ class _CartScreenState extends State<CartScreen> {
                 ActionChip(
                   label: const Text('Exacto'),
                   onPressed: () {
+                    final exact = _totalRequiredInSelectedCurrency;
                     setState(() {
-                      _cashReceived = _totalToPay;
-                      _cashReceivedController.text = _totalToPay.toStringAsFixed(2);
+                      _cashReceived = exact;
+                      _cashReceivedController.text = exact.toStringAsFixed(2);
                     });
                   },
                 ),
                 const SizedBox(width: 6),
-                ...[5, 10, 20, 50, 100].map((bill) {
+                ...(_paymentCurrency == 'USD'
+                        ? [5, 10, 20, 50, 100]
+                        : [100, 200, 500, 1000, 2000])
+                    .map((val) {
                   return Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: ActionChip(
-                      label: Text('\$$bill'),
+                      label: Text('$curSymbol$val'),
                       onPressed: () {
                         setState(() {
-                          _cashReceived = bill.toDouble();
-                          _cashReceivedController.text = '$bill';
+                          _cashReceived = val.toDouble();
+                          _cashReceivedController.text = '$val';
                         });
                       },
                     ),
@@ -527,17 +612,16 @@ class _CartScreenState extends State<CartScreen> {
 
           const SizedBox(height: 12),
 
-          // Resultado del Cambio / Falta
           if (_cashReceived > 0)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: _missingAmount > 0
+                color: _missingAmountInSelectedCurrency > 0
                     ? Colors.red.shade50
                     : Colors.green.shade50,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: _missingAmount > 0
+                  color: _missingAmountInSelectedCurrency > 0
                       ? Colors.red.shade300
                       : Colors.green.shade300,
                 ),
@@ -546,23 +630,25 @@ class _CartScreenState extends State<CartScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    _missingAmount > 0 ? 'Faltante:' : 'Cambio / Vuelto:',
+                    _missingAmountInSelectedCurrency > 0
+                        ? 'Faltante:'
+                        : 'Cambio / Vuelto:',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
-                      color: _missingAmount > 0
+                      color: _missingAmountInSelectedCurrency > 0
                           ? Colors.red.shade900
                           : Colors.green.shade900,
                     ),
                   ),
                   Text(
-                    _missingAmount > 0
-                        ? '-\$${_missingAmount.toStringAsFixed(2)}'
-                        : '\$${_changeToReturn.toStringAsFixed(2)}',
+                    _missingAmountInSelectedCurrency > 0
+                        ? '-$curSymbol${_missingAmountInSelectedCurrency.toStringAsFixed(2)}'
+                        : '$curSymbol${_changeToReturnInSelectedCurrency.toStringAsFixed(2)}',
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 20,
-                      color: _missingAmount > 0
+                      color: _missingAmountInSelectedCurrency > 0
                           ? Colors.red.shade900
                           : Colors.green.shade900,
                     ),
@@ -575,18 +661,32 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  Widget _buildRowDetail(String title, String value, {Color? color}) {
+  Widget _buildDualRowDetail(String title, String usdValue, String bsValue,
+      {Color? color}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(title, style: const TextStyle(fontSize: 13)),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: color,
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              usdValue,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+            Text(
+              bsValue,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: color ?? Colors.green.shade800,
+              ),
+            ),
+          ],
         ),
       ],
     );

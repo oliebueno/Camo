@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import '../data/mock_products.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
+import '../services/bcv_service.dart';
+import '../services/supabase_service.dart';
 import '../widgets/product_card.dart';
+import 'admin_screen.dart';
 import 'cart_screen.dart';
 
-/// Pantalla Principal del Catálogo y Búsqueda de Productos
-/// Es un StatefulWidget porque maneja estado local (búsqueda, filtros y carrito)
+/// Pantalla Principal del Catálogo para Vendedores (Conectada a Supabase y Offline-First)
 class CatalogScreen extends StatefulWidget {
   const CatalogScreen({super.key});
 
@@ -15,35 +16,91 @@ class CatalogScreen extends StatefulWidget {
 }
 
 class _CatalogScreenState extends State<CatalogScreen> {
-  // Lista de todos los productos disponibles
-  final List<Product> _allProducts = initialMockProducts;
+  List<Product> _allProducts = [];
+  bool _isLoadingProducts = true;
 
   // Estado de la búsqueda y filtros
   String _searchQuery = '';
   String _selectedCategory = 'Todos';
 
-  // Controlador para el campo de texto del buscador
-  final TextEditingController _searchController = TextEditingController();
+  // Tasa de cambio activa (Bolívares por Dólar) y fecha
+  double _exchangeRate = 36.50;
+  String _rateDate = 'Cargando...';
+  bool _isLoadingRate = false;
 
-  // El carrito de compras actual: Map<idProducto, CartItem>
-  // Usamos un Map para que buscar o actualizar un producto por su ID sea instantáneo O(1)
+  final TextEditingController _searchController = TextEditingController();
   final Map<String, CartItem> _cart = {};
 
-  /// Obtiene la lista única de categorías disponibles para los filtros rápidos
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+    _fetchBcvRate();
+  }
+
+  /// Carga los productos desde Supabase (o del caché local si está sin conexión)
+  Future<void> _loadProducts({bool showToast = false}) async {
+    setState(() => _isLoadingProducts = true);
+    final products = await SupabaseService.getProducts();
+
+    if (!mounted) return;
+
+    setState(() {
+      _allProducts = products;
+      _isLoadingProducts = false;
+    });
+
+    if (showToast && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ ${_allProducts.length} productos sincronizados'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  /// Consulta la tasa del BCV en segundo plano
+  Future<void> _fetchBcvRate({bool showToast = false}) async {
+    setState(() => _isLoadingRate = true);
+
+    final result = await BcvService.fetchOfficialRate();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingRate = false;
+      if (result.isSuccess) {
+        _exchangeRate = result.rate;
+        _rateDate = result.date;
+      }
+    });
+
+    if (showToast && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.isSuccess
+                ? '✅ Tasa BCV actualizada: Bs. ${_exchangeRate.toStringAsFixed(2)}'
+                : '⚠️ No se pudo conectar al BCV, usando tasa guardada.',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   List<String> get _categories {
     final categories = _allProducts.map((p) => p.category).toSet().toList();
     categories.sort();
     return ['Todos', ...categories];
   }
 
-  /// Filtra los productos según el texto buscado y la categoría seleccionada
   List<Product> get _filteredProducts {
     return _allProducts.where((product) {
-      // 1. Filtro por categoría
       final matchesCategory = _selectedCategory == 'Todos' ||
           product.category.toLowerCase() == _selectedCategory.toLowerCase();
 
-      // 2. Filtro por texto (busca por nombre o código de barras)
       final query = _searchQuery.trim().toLowerCase();
       final matchesQuery = query.isEmpty ||
           product.name.toLowerCase().contains(query) ||
@@ -53,17 +110,14 @@ class _CatalogScreenState extends State<CatalogScreen> {
     }).toList();
   }
 
-  /// Calcula el total monetario actual del carrito
-  double get _cartTotal {
-    return _cart.values.fold(0.0, (sum, item) => sum + item.subtotal);
-  }
+  double get _cartTotalUSD =>
+      _cart.values.fold(0.0, (sum, item) => sum + item.subtotal);
 
-  /// Calcula la cantidad total de artículos en el carrito
-  int get _cartItemCount {
-    return _cart.values.fold(0, (sum, item) => sum + item.quantity);
-  }
+  double get _cartTotalBs => _cartTotalUSD * _exchangeRate;
 
-  /// Agrega una unidad de un producto al carrito
+  int get _cartItemCount =>
+      _cart.values.fold(0, (sum, item) => sum + item.quantity);
+
   void _addToCart(Product product) {
     setState(() {
       if (_cart.containsKey(product.id)) {
@@ -74,7 +128,6 @@ class _CatalogScreenState extends State<CatalogScreen> {
     });
   }
 
-  /// Resta una unidad del carrito (si llega a 0 se elimina)
   void _removeFromCart(Product product) {
     setState(() {
       if (_cart.containsKey(product.id)) {
@@ -87,20 +140,104 @@ class _CatalogScreenState extends State<CatalogScreen> {
     });
   }
 
-  /// Vacía todo el carrito
   void _clearCart() {
     setState(() {
       _cart.clear();
     });
   }
 
-  /// Abre la pantalla del Carrito y Calculadora de Venta
+  void _editExchangeRateDialog() {
+    final controller =
+        TextEditingController(text: _exchangeRate.toStringAsFixed(2));
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.account_balance_rounded, size: 24),
+            SizedBox(width: 8),
+            Text('Tasa Oficial BCV'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primaryContainer
+                    .withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Tasa obtenida: Bs. ${_exchangeRate.toStringAsFixed(2)}\nFecha: $_rateDate',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Ajustar tasa manualmente si lo deseas:',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                prefixText: 'Bs. ',
+                border: OutlineInputBorder(),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              _fetchBcvRate(showToast: true);
+            },
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Actualizar desde BCV'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final newRate =
+                  double.tryParse(controller.text.replaceAll(',', '.'));
+              if (newRate != null && newRate > 0) {
+                setState(() {
+                  _exchangeRate = newRate;
+                });
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _openCartScreen() async {
-    // Navigator.push es el equivalente a router.push() en React / Next.js
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => CartScreen(
           cart: _cart,
+          exchangeRate: _exchangeRate,
           onAddToCart: _addToCart,
           onRemoveFromCart: _removeFromCart,
           onClearCart: _clearCart,
@@ -108,8 +245,20 @@ class _CatalogScreenState extends State<CatalogScreen> {
       ),
     );
 
-    // Al regresar del carrito, refrescamos la pantalla
     setState(() {});
+  }
+
+  void _openAdminScreen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AdminScreen(
+          exchangeRate: _exchangeRate,
+          onProductsChanged: () => _loadProducts(),
+        ),
+      ),
+    );
+
+    _loadProducts();
   }
 
   @override
@@ -125,18 +274,42 @@ class _CatalogScreenState extends State<CatalogScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
-          children: [
-            Icon(Icons.point_of_sale_rounded, size: 28),
-            SizedBox(width: 10),
-            Text(
-              'Camo Precios',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
+        title: const Text(
+          'Camo Precios',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         actions: [
-          // Botón directo para ver el carrito en el AppBar con badge de contador
+          // Botón Chip con la tasa oficial BCV
+          ActionChip(
+            avatar: _isLoadingRate
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.account_balance, size: 16),
+            label: Text(
+              _isLoadingRate
+                  ? 'BCV...'
+                  : 'BCV: Bs. ${_exchangeRate.toStringAsFixed(2)}',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+            onPressed: _editExchangeRateDialog,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            backgroundColor: theme.colorScheme.secondaryContainer,
+          ),
+          const SizedBox(width: 4),
+
+          // Botón para entrar al Panel de Administración (Desktop / Windows)
+          IconButton(
+            icon: const Icon(Icons.admin_panel_settings_outlined),
+            tooltip: 'Panel de Administración (Gestión)',
+            onPressed: _openAdminScreen,
+          ),
+
+          // Botón Carrito con badge
           IconButton(
             onPressed: _openCartScreen,
             icon: Badge(
@@ -148,121 +321,146 @@ class _CatalogScreenState extends State<CatalogScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
-          // 1. Buscador en tiempo real
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (value) {
-                // Cada tecla pulsada actualiza el estado (como onChange en React)
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'Buscar por nombre o código...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            _searchQuery = '';
-                          });
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
+      body: _isLoadingProducts
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Sincronizando catálogo con Supabase...'),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: () => _loadProducts(showToast: true),
+              child: Column(
+                children: [
+                  // 1. Buscador en tiempo real
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (value) {
+                        setState(() {
+                          _searchQuery = value;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Buscar por nombre o código...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() {
+                                    _searchQuery = '';
+                                  });
+                                },
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: theme.colorScheme.surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                        contentPadding: const EdgeInsets.symmetric(
+                            vertical: 0, horizontal: 16),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // 2. Filtros de Categoría
+                  SizedBox(
+                    height: 48,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      itemCount: _categories.length,
+                      itemBuilder: (context, index) {
+                        final category = _categories[index];
+                        final isSelected = category == _selectedCategory;
+
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: FilterChip(
+                            label: Text(category),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              setState(() {
+                                _selectedCategory = category;
+                              });
+                            },
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  const Divider(height: 1),
+
+                  // 3. Lista de Productos
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? ListView(
+                            children: [
+                              SizedBox(
+                                height:
+                                    MediaQuery.of(context).size.height * 0.4,
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.search_off_rounded,
+                                        size: 64,
+                                        color: theme.colorScheme.outline,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        'No se encontraron productos',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: theme.colorScheme.outline,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(top: 6, bottom: 100),
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) {
+                              final product = filtered[index];
+                              final quantity = _cart[product.id]?.quantity ?? 0;
+
+                              return ProductCard(
+                                key: ValueKey(product.id),
+                                product: product,
+                                cartQuantity: quantity,
+                                exchangeRate: _exchangeRate,
+                                onAdd: () => _addToCart(product),
+                                onRemove: () => _removeFromCart(product),
+                              );
+                            },
+                          ),
+                  ),
+                ],
               ),
             ),
-          ),
 
-          // 2. Filtros de Categoría horizontales (Pills)
-          SizedBox(
-            height: 48,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              itemCount: _categories.length,
-              itemBuilder: (context, index) {
-                final category = _categories[index];
-                final isSelected = category == _selectedCategory;
-
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: Text(category),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setState(() {
-                        _selectedCategory = category;
-                      });
-                    },
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          const Divider(height: 1),
-
-          // 3. Lista de Productos (Virtualizada con ListView.builder)
-          Expanded(
-            child: filtered.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.search_off_rounded,
-                          size: 64,
-                          color: theme.colorScheme.outline,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'No se encontraron productos',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: theme.colorScheme.outline,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.only(top: 6, bottom: 90),
-                    itemCount: filtered.length,
-                    itemBuilder: (context, index) {
-                      final product = filtered[index];
-                      final quantity = _cart[product.id]?.quantity ?? 0;
-
-                      return ProductCard(
-                        key: ValueKey(product.id),
-                        product: product,
-                        cartQuantity: quantity,
-                        onAdd: () => _addToCart(product),
-                        onRemove: () => _removeFromCart(product),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-
-      // 4. Barra Inferior Flotante de Total y Venta
+      // 4. Barra Inferior Flotante de Total Dual ($ y Bs.)
       bottomSheet: _cartItemCount > 0
           ? Container(
               padding: const EdgeInsets.all(16),
@@ -279,7 +477,6 @@ class _CatalogScreenState extends State<CatalogScreen> {
               child: SafeArea(
                 child: Row(
                   children: [
-                    // Resumen de cantidad y total
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -292,24 +489,38 @@ class _CatalogScreenState extends State<CatalogScreen> {
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        Text(
-                          '\$${_cartTotal.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            color: theme.colorScheme.primary,
-                          ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text(
+                              '\$${_cartTotalUSD.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Bs. ${_cartTotalBs.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green.shade800,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                     const Spacer(),
 
-                    // Botón para ir a cobrar / ver detalle
                     FilledButton.icon(
                       onPressed: _openCartScreen,
                       icon: const Icon(Icons.arrow_forward_rounded),
                       label: const Text(
-                        'Cobrar / Carrito',
+                        'Cobrar',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       style: FilledButton.styleFrom(

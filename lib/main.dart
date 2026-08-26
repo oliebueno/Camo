@@ -1,12 +1,22 @@
 import 'package:flutter/material.dart';
 import 'screens/catalog_screen.dart';
+import 'services/supabase_service.dart';
 
-void main() {
+void main() async {
+  // Asegura la inicialización de los bindings de Flutter para llamadas asíncronas
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializa la conexión con Supabase
+  try {
+    await SupabaseService.initialize();
+  } catch (e) {
+    // Si falla (ej. sin internet al primer arranque), la app sigue funcionando con cache
+  }
+
   runApp(const CamoPreciosApp());
 }
 
 /// Widget raíz de la aplicación
-/// Configura el tema visual (Material 3), colores y la pantalla inicial
 class CamoPreciosApp extends StatelessWidget {
   const CamoPreciosApp({super.key});
 
@@ -17,7 +27,6 @@ class CamoPreciosApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        // Color primario elegante en tono azul ultramar / índigo para apps comerciales
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF1E56A0),
           brightness: Brightness.light,
@@ -38,7 +47,7 @@ class CamoPreciosApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      themeMode: ThemeMode.system, // Se adapta al modo oscuro/claro del teléfono
+      themeMode: ThemeMode.system,
       home: const CatalogScreen(),
     );
   }
