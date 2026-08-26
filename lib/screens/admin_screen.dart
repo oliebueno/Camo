@@ -62,7 +62,7 @@ class _AdminScreenState extends State<AdminScreen> {
     }).toList();
   }
 
-  /// Diálogo inteligente para Crear o Editar un Producto (Diseño Tonal Moderno sin fondos blancos duros)
+  /// Diálogo inteligente para Crear o Editar un Producto
   void _openProductFormDialog({Product? productToEdit}) {
     final isEditing = productToEdit != null;
 
@@ -78,10 +78,15 @@ class _AdminScreenState extends State<AdminScreen> {
 
     bool trackStock = productToEdit?.trackStock ?? true;
 
-    final costPriceCtrl = TextEditingController(
-        text: productToEdit?.costPrice != null && productToEdit!.costPrice > 0
-            ? productToEdit.costPrice.toStringAsFixed(2)
+    // --- VARIABLES DE COSTO DE COMPRA ---
+    double baseCostUSD = productToEdit?.costPrice ?? 0.0;
+    final costUsdCtrl = TextEditingController(
+        text: baseCostUSD > 0 ? baseCostUSD.toStringAsFixed(2) : '');
+    final costBsCtrl = TextEditingController(
+        text: baseCostUSD > 0
+            ? (baseCostUSD * widget.exchangeRate).toStringAsFixed(2)
             : '');
+    bool costAddTax16 = false; // IVA en la compra (16%)
     final unitsCtrl = TextEditingController(
         text: productToEdit?.unitsPerPackage.toString() ?? '1');
     final marginCtrl = TextEditingController(
@@ -90,16 +95,15 @@ class _AdminScreenState extends State<AdminScreen> {
             ? productToEdit.profitMargin.toStringAsFixed(0)
             : '');
 
+    // --- VARIABLES DE PRECIO DE VENTA ---
+    double baseSaleUSD = productToEdit?.price ?? 0.0;
     final priceUsdCtrl = TextEditingController(
-        text: productToEdit?.price != null && productToEdit!.price > 0
-            ? productToEdit.price.toStringAsFixed(2)
-            : '');
+        text: baseSaleUSD > 0 ? baseSaleUSD.toStringAsFixed(2) : '');
     final priceBsCtrl = TextEditingController(
-        text: productToEdit?.price != null && productToEdit!.price > 0
-            ? (productToEdit.price * widget.exchangeRate).toStringAsFixed(2)
+        text: baseSaleUSD > 0
+            ? (baseSaleUSD * widget.exchangeRate).toStringAsFixed(2)
             : '');
-
-    bool addTax16 = false;
+    bool saleAddTax16 = false; // IVA en la venta (16%)
 
     showDialog(
       context: context,
@@ -109,39 +113,40 @@ class _AdminScreenState extends State<AdminScreen> {
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            double baseUSD =
-                double.tryParse(priceUsdCtrl.text.replaceAll(',', '.')) ?? 0.0;
+            final int units = int.tryParse(unitsCtrl.text) ?? 1;
+            final double margin =
+                double.tryParse(marginCtrl.text.replaceAll(',', '.')) ?? 0.0;
 
-            final double finalPriceUSD = addTax16 ? baseUSD * 1.16 : baseUSD;
-            final double finalPriceBs = finalPriceUSD * widget.exchangeRate;
+            // 1. Costo real total de la caja (con IVA de compra si aplica)
+            final double totalCostBoxUSD =
+                costAddTax16 ? baseCostUSD * 1.16 : baseCostUSD;
 
-            void recalculateFromPackage() {
-              final cost = double.tryParse(
-                      costPriceCtrl.text.replaceAll(',', '.')) ??
-                  0.0;
-              final units = int.tryParse(unitsCtrl.text) ?? 1;
-              final margin = double.tryParse(
-                      marginCtrl.text.replaceAll(',', '.')) ??
-                  0.0;
+            // 2. Costo unitario real
+            final double realUnitCostUSD =
+                units > 0 ? (totalCostBoxUSD / units) : totalCostBoxUSD;
+            final double realUnitCostBs =
+                realUnitCostUSD * widget.exchangeRate;
 
-              if (units > 0 && cost > 0) {
-                final unitCost = cost / units;
-                final suggestedBase =
-                    margin > 0 ? unitCost * (1 + (margin / 100)) : unitCost;
+            // 3. Precio de venta final oficial
+            final double finalSaleUSD =
+                saleAddTax16 ? baseSaleUSD * 1.16 : baseSaleUSD;
+            final double finalSaleBs = finalSaleUSD * widget.exchangeRate;
+
+            // Función para aplicar la sugerencia de costo + ganancia al precio de venta
+            void applySuggestedPriceToSale() {
+              if (realUnitCostUSD > 0) {
+                final suggestedBase = margin > 0
+                    ? realUnitCostUSD * (1 + (margin / 100))
+                    : realUnitCostUSD;
 
                 setDialogState(() {
+                  baseSaleUSD = suggestedBase;
                   priceUsdCtrl.text = suggestedBase.toStringAsFixed(2);
                   priceBsCtrl.text =
                       (suggestedBase * widget.exchangeRate).toStringAsFixed(2);
                 });
               }
             }
-
-            final cost =
-                double.tryParse(costPriceCtrl.text.replaceAll(',', '.')) ??
-                    0.0;
-            final units = int.tryParse(unitsCtrl.text) ?? 1;
-            final unitCost = units > 0 ? (cost / units) : 0.0;
 
             InputDecoration customInputDecoration({
               required String label,
@@ -160,13 +165,15 @@ class _AdminScreenState extends State<AdminScreen> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+                    color:
+                        theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+                    color:
+                        theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
@@ -217,7 +224,7 @@ class _AdminScreenState extends State<AdminScreen> {
                 ],
               ),
               content: SizedBox(
-                width: 640,
+                width: 660,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -225,7 +232,7 @@ class _AdminScreenState extends State<AdminScreen> {
                     children: [
                       // 1. Datos Básicos
                       Text(
-                        'INFORMACIÓN GENERAL',
+                        '1. INFORMACIÓN GENERAL',
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 12,
@@ -267,7 +274,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
                       const SizedBox(height: 12),
 
-                      // Control de Inventario / Stock Tonal
+                      // Control de Inventario / Stock
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 10),
@@ -339,7 +346,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
                       const SizedBox(height: 18),
 
-                      // 2. Calculadora de Caja (Opcional)
+                      // 2. Costo de Compra / Caja (Soporte Dual $ y Bs. + IVA Compra 16%)
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -354,111 +361,16 @@ class _AdminScreenState extends State<AdminScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                              children: [
-                                Icon(Icons.inventory_2_outlined,
-                                    size: 18, color: theme.colorScheme.primary),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'Costo por Caja / Bulto (Calculadora Opcional)',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: costPriceCtrl,
-                                    keyboardType: const TextInputType
-                                        .numberWithOptions(decimal: true),
-                                    onChanged: (_) => recalculateFromPackage(),
-                                    decoration: customInputDecoration(
-                                      label: 'Costo Caja (USD)',
-                                      prefixText: r'$ ',
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: TextField(
-                                    controller: unitsCtrl,
-                                    keyboardType: TextInputType.number,
-                                    onChanged: (_) => recalculateFromPackage(),
-                                    decoration: customInputDecoration(
-                                      label: 'Unids en Caja',
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: TextField(
-                                    controller: marginCtrl,
-                                    keyboardType: const TextInputType
-                                        .numberWithOptions(decimal: true),
-                                    onChanged: (_) => recalculateFromPackage(),
-                                    decoration: customInputDecoration(
-                                      label: '% Ganancia',
-                                      suffixText: '%',
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (cost > 0 && units > 0) ...[
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.primaryContainer
-                                      .withValues(alpha: 0.4),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  '➔ Costo unitario real: \$${unitCost.toStringAsFixed(2)} por unidad',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: theme.colorScheme.onPrimaryContainer,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      // 3. Fijación de Precio de Venta (Dual USD / Bs. e IVA 16%)
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: theme.colorScheme.primary
-                                .withValues(alpha: 0.35),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Row(
                                   children: [
-                                    Icon(Icons.sell_rounded,
+                                    Icon(Icons.shopping_bag_outlined,
                                         size: 18,
                                         color: theme.colorScheme.primary),
                                     const SizedBox(width: 8),
                                     const Text(
-                                      'Precio de Venta Unitario',
+                                      '2. Costo de Compra (Caja o Producto)',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 13,
@@ -474,7 +386,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
-                                    'Tasa BCV: Bs. ${widget.exchangeRate.toStringAsFixed(2)}',
+                                    'BCV: Bs. ${widget.exchangeRate.toStringAsFixed(2)}',
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
@@ -485,9 +397,223 @@ class _AdminScreenState extends State<AdminScreen> {
                                 ),
                               ],
                             ),
+                            const SizedBox(height: 10),
+
+                            // Entradas de Costo en $ o en Bs.
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: costUsdCtrl,
+                                    keyboardType: const TextInputType
+                                        .numberWithOptions(decimal: true),
+                                    onChanged: (val) {
+                                      final usd = double.tryParse(
+                                              val.replaceAll(',', '.')) ??
+                                          0.0;
+                                      setDialogState(() {
+                                        baseCostUSD = usd;
+                                        costBsCtrl.text = (usd *
+                                                widget.exchangeRate)
+                                            .toStringAsFixed(2);
+                                      });
+                                    },
+                                    decoration: customInputDecoration(
+                                      label: 'Costo en Dólares (\$ USD)',
+                                      prefixText: r'$ ',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+
+                                const Icon(Icons.sync_alt_rounded, size: 20),
+                                const SizedBox(width: 8),
+
+                                Expanded(
+                                  child: TextField(
+                                    controller: costBsCtrl,
+                                    keyboardType: const TextInputType
+                                        .numberWithOptions(decimal: true),
+                                    onChanged: (val) {
+                                      final bs = double.tryParse(
+                                              val.replaceAll(',', '.')) ??
+                                          0.0;
+                                      setDialogState(() {
+                                        baseCostUSD = widget.exchangeRate > 0
+                                            ? bs / widget.exchangeRate
+                                            : 0.0;
+                                        costUsdCtrl.text =
+                                            baseCostUSD.toStringAsFixed(2);
+                                      });
+                                    },
+                                    decoration: customInputDecoration(
+                                      label: 'Costo en Bolívares (Bs.)',
+                                      prefixText: 'Bs. ',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 10),
+
+                            // Checkbox IVA en la Compra (16%)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Checkbox(
+                                    value: costAddTax16,
+                                    onChanged: (val) {
+                                      setDialogState(() {
+                                        costAddTax16 = val ?? false;
+                                      });
+                                    },
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      costAddTax16
+                                          ? 'Me cobraron +16% de IVA en la factura de compra'
+                                          : 'El costo de compra ya incluye IVA (o es exento)',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: theme.colorScheme.onSurface,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 10),
+
+                            // Unidades por caja y Margen %
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: unitsCtrl,
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (_) => setDialogState(() {}),
+                                    decoration: customInputDecoration(
+                                      label: 'Unidades en Caja/Bulto',
+                                      hintText: '1 si es unidad suelta',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: marginCtrl,
+                                    keyboardType: const TextInputType
+                                        .numberWithOptions(decimal: true),
+                                    onChanged: (_) => setDialogState(() {}),
+                                    decoration: customInputDecoration(
+                                      label: '% Ganancia Deseada',
+                                      suffixText: '%',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            if (totalCostBoxUSD > 0) ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primaryContainer
+                                      .withValues(alpha: 0.4),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '➔ Costo unitario real:',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: theme.colorScheme
+                                                .onPrimaryContainer,
+                                          ),
+                                        ),
+                                        Text(
+                                          '\$${realUnitCostUSD.toStringAsFixed(2)}  (Bs. ${realUnitCostBs.toStringAsFixed(2)})',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w900,
+                                            color: theme.colorScheme
+                                                .onPrimaryContainer,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    FilledButton.tonalIcon(
+                                      onPressed: applySuggestedPriceToSale,
+                                      icon: const Icon(
+                                          Icons.arrow_downward_rounded,
+                                          size: 16),
+                                      label: const Text('Calcular Venta'),
+                                      style: FilledButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      // 3. Fijación de Precio de Venta Oficial (Directo en $ o en Bs. + IVA Venta 16%)
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: theme.colorScheme.primary
+                                .withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.sell_rounded,
+                                    size: 18,
+                                    color: theme.colorScheme.primary),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  '3. Precio de Venta Unitario (El que verá el vendedor)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 12),
 
-                            // Inputs interactivos
+                            // Inputs interactivos de venta en $ o en Bs.
                             Row(
                               children: [
                                 Expanded(
@@ -500,13 +626,14 @@ class _AdminScreenState extends State<AdminScreen> {
                                               val.replaceAll(',', '.')) ??
                                           0.0;
                                       setDialogState(() {
+                                        baseSaleUSD = usd;
                                         priceBsCtrl.text = (usd *
                                                 widget.exchangeRate)
                                             .toStringAsFixed(2);
                                       });
                                     },
                                     decoration: customInputDecoration(
-                                      label: 'Precio en Dólares (\$)',
+                                      label: 'Precio Venta (\$ USD)',
                                       prefixText: r'$ ',
                                     ),
                                   ),
@@ -526,16 +653,15 @@ class _AdminScreenState extends State<AdminScreen> {
                                               val.replaceAll(',', '.')) ??
                                           0.0;
                                       setDialogState(() {
-                                        priceUsdCtrl.text = (widget
-                                                        .exchangeRate >
-                                                    0
-                                                ? bs / widget.exchangeRate
-                                                : 0.0)
-                                            .toStringAsFixed(2);
+                                        baseSaleUSD = widget.exchangeRate > 0
+                                            ? bs / widget.exchangeRate
+                                            : 0.0;
+                                        priceUsdCtrl.text =
+                                            baseSaleUSD.toStringAsFixed(2);
                                       });
                                     },
                                     decoration: customInputDecoration(
-                                      label: 'Precio en Bolívares (Bs.)',
+                                      label: 'Precio Venta (Bs.)',
                                       prefixText: 'Bs. ',
                                     ),
                                   ),
@@ -545,7 +671,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
                             const SizedBox(height: 12),
 
-                            // Selector de IVA (16%)
+                            // Selector de IVA Venta (16%)
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 8),
@@ -561,10 +687,10 @@ class _AdminScreenState extends State<AdminScreen> {
                               child: Row(
                                 children: [
                                   Checkbox(
-                                    value: addTax16,
+                                    value: saleAddTax16,
                                     onChanged: (val) {
                                       setDialogState(() {
-                                        addTax16 = val ?? false;
+                                        saleAddTax16 = val ?? false;
                                       });
                                     },
                                   ),
@@ -574,16 +700,16 @@ class _AdminScreenState extends State<AdminScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         const Text(
-                                          'El monto ingresado es Sin IVA (Agregar +16%)',
+                                          'El monto de venta es Base Imponible (Agregar +16% IVA)',
                                           style: TextStyle(
                                             fontSize: 13,
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
                                         Text(
-                                          addTax16
-                                              ? 'Se sumará el 16% de IVA al precio final'
-                                              : 'El precio ingresado ya es el monto final (o producto exento)',
+                                          saleAddTax16
+                                              ? 'Se sumará 16% de IVA al precio final al cliente'
+                                              : 'El precio ingresado ya es el monto final a cobrar (o exento)',
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: theme.colorScheme.outline,
@@ -598,7 +724,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
                             const SizedBox(height: 12),
 
-                            // Resumen Final
+                            // Resumen Final Oficial
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
@@ -619,16 +745,16 @@ class _AdminScreenState extends State<AdminScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'PRECIO FINAL DE VENTA:',
+                                        'PRECIO FINAL OFICIAL DE VENTA:',
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,
                                           color: theme.colorScheme.primary,
                                         ),
                                       ),
-                                      if (addTax16)
+                                      if (saleAddTax16)
                                         Text(
-                                          'Base: \$${baseUSD.toStringAsFixed(2)} + IVA: \$${(baseUSD * 0.16).toStringAsFixed(2)}',
+                                          'Base: Bs. ${(baseSaleUSD * widget.exchangeRate).toStringAsFixed(2)} + IVA: Bs. ${(baseSaleUSD * 0.16 * widget.exchangeRate).toStringAsFixed(2)}',
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: theme.colorScheme.outline,
@@ -640,19 +766,19 @@ class _AdminScreenState extends State<AdminScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
-                                        '\$${finalPriceUSD.toStringAsFixed(2)}',
-                                        style: TextStyle(
+                                        'Bs. ${finalSaleBs.toStringAsFixed(2)}',
+                                        style: const TextStyle(
                                           fontSize: 22,
                                           fontWeight: FontWeight.w900,
-                                          color: theme.colorScheme.primary,
+                                          color: Colors.green,
                                         ),
                                       ),
                                       Text(
-                                        'Bs. ${finalPriceBs.toStringAsFixed(2)}',
+                                        '\$${finalSaleUSD.toStringAsFixed(2)} USD',
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.green.shade700,
+                                          color: theme.colorScheme.outline,
                                         ),
                                       ),
                                     ],
@@ -688,7 +814,7 @@ class _AdminScreenState extends State<AdminScreen> {
                       return;
                     }
 
-                    if (finalPriceUSD <= 0) {
+                    if (finalSaleUSD <= 0) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                             content: Text(
@@ -703,14 +829,10 @@ class _AdminScreenState extends State<AdminScreen> {
                       category: categoryCtrl.text.trim().isEmpty
                           ? 'General'
                           : categoryCtrl.text.trim(),
-                      price: finalPriceUSD,
-                      costPrice: double.tryParse(
-                              costPriceCtrl.text.replaceAll(',', '.')) ??
-                          0.0,
-                      unitsPerPackage: int.tryParse(unitsCtrl.text) ?? 1,
-                      profitMargin: double.tryParse(
-                              marginCtrl.text.replaceAll(',', '.')) ??
-                          0.0,
+                      price: finalSaleUSD,
+                      costPrice: totalCostBoxUSD,
+                      unitsPerPackage: units,
+                      profitMargin: margin,
                       barcode: barcodeCtrl.text.trim(),
                       trackStock: trackStock,
                       stock: trackStock
