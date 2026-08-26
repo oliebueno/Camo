@@ -113,7 +113,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
   double get _cartTotalUSD =>
       _cart.values.fold(0.0, (sum, item) => sum + item.subtotal);
 
-  double get _cartTotalBs => _cartTotalUSD * _exchangeRate;
+  int get _cartTotalBsRounded => (_cartTotalUSD * _exchangeRate).round();
 
   int get _cartItemCount =>
       _cart.values.fold(0, (sum, item) => sum + item.quantity);
@@ -460,7 +460,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
               ),
             ),
 
-      // 4. Barra Inferior Flotante de Total Dual ($ y Bs.)
+      // 4. Barra Inferior Flotante de Total Dual ($ 4 decimales y Bs. entero)
       bottomSheet: _cartItemCount > 0
           ? Container(
               padding: const EdgeInsets.all(16),
@@ -494,18 +494,18 @@ class _CatalogScreenState extends State<CatalogScreen> {
                           textBaseline: TextBaseline.alphabetic,
                           children: [
                             Text(
-                              '\$${_cartTotalUSD.toStringAsFixed(2)}',
+                              '\$${_cartTotalUSD.toStringAsFixed(4)}',
                               style: TextStyle(
-                                fontSize: 22,
+                                fontSize: 20,
                                 fontWeight: FontWeight.w900,
                                 color: theme.colorScheme.primary,
                               ),
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'Bs. ${_cartTotalBs.toStringAsFixed(2)}',
+                              'Bs. $_cartTotalBsRounded',
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 15,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.green.shade800,
                               ),

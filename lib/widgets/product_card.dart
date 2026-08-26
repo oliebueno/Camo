@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/product.dart';
 
-/// Tarjeta visual para mostrar un producto en el catálogo con soporte dual ($ y Bs.) y control de stock
+/// Tarjeta visual para mostrar un producto en el catálogo con soporte dual ($ 4 decimales y Bs. enteros)
 class ProductCard extends StatelessWidget {
   final Product product;
   final int cartQuantity;
@@ -22,7 +22,7 @@ class ProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isSelected = cartQuantity > 0;
-    final priceInBs = product.price * exchangeRate;
+    final int priceInBsRounded = (product.price * exchangeRate).round();
 
     return Card(
       elevation: isSelected ? 3 : 1,
@@ -45,7 +45,7 @@ class ProductCard extends StatelessWidget {
             _buildCategoryIcon(theme),
             const SizedBox(width: 14),
 
-            // 2. Información del producto (Nombre, código, categoría, precio y stock)
+            // 2. Información del producto
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -97,26 +97,26 @@ class ProductCard extends StatelessWidget {
 
                   const SizedBox(height: 6),
 
-                  // Precios: $ USD y Bs. en tiempo real
+                  // Precios: $ USD (4 decimales) y Bs. redondeado a entero
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
-                      // Precio en Dólares
+                      // Precio en Dólares (4 decimales de precisión)
                       Text(
-                        '\$${product.price.toStringAsFixed(2)}',
+                        '\$${product.price.toStringAsFixed(4)}',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 17,
                           fontWeight: FontWeight.w900,
                           color: theme.colorScheme.primary,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // Precio en Bolívares
+                      // Precio en Bolívares (Entero)
                       Text(
-                        'Bs. ${priceInBs.toStringAsFixed(2)}',
+                        'Bs. $priceInBsRounded',
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: Colors.green.shade800,
                         ),

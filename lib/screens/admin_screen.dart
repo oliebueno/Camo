@@ -81,10 +81,10 @@ class _AdminScreenState extends State<AdminScreen> {
     // --- VARIABLES DE COSTO DE COMPRA ---
     double baseCostUSD = productToEdit?.costPrice ?? 0.0;
     final costUsdCtrl = TextEditingController(
-        text: baseCostUSD > 0 ? baseCostUSD.toStringAsFixed(2) : '');
+        text: baseCostUSD > 0 ? baseCostUSD.toStringAsFixed(4) : '');
     final costBsCtrl = TextEditingController(
         text: baseCostUSD > 0
-            ? (baseCostUSD * widget.exchangeRate).toStringAsFixed(2)
+            ? (baseCostUSD * widget.exchangeRate).round().toString()
             : '');
     bool costAddTax16 = false; // IVA en la compra (16%)
     final unitsCtrl = TextEditingController(
@@ -98,10 +98,10 @@ class _AdminScreenState extends State<AdminScreen> {
     // --- VARIABLES DE PRECIO DE VENTA ---
     double baseSaleUSD = productToEdit?.price ?? 0.0;
     final priceUsdCtrl = TextEditingController(
-        text: baseSaleUSD > 0 ? baseSaleUSD.toStringAsFixed(2) : '');
+        text: baseSaleUSD > 0 ? baseSaleUSD.toStringAsFixed(4) : '');
     final priceBsCtrl = TextEditingController(
         text: baseSaleUSD > 0
-            ? (baseSaleUSD * widget.exchangeRate).toStringAsFixed(2)
+            ? (baseSaleUSD * widget.exchangeRate).round().toString()
             : '');
     bool saleAddTax16 = false; // IVA en la venta (16%)
 
@@ -121,16 +121,17 @@ class _AdminScreenState extends State<AdminScreen> {
             final double totalCostBoxUSD =
                 costAddTax16 ? baseCostUSD * 1.16 : baseCostUSD;
 
-            // 2. Costo unitario real
+            // 2. Costo unitario real (4 decimales en USD)
             final double realUnitCostUSD =
                 units > 0 ? (totalCostBoxUSD / units) : totalCostBoxUSD;
-            final double realUnitCostBs =
-                realUnitCostUSD * widget.exchangeRate;
+            final int realUnitCostBs =
+                (realUnitCostUSD * widget.exchangeRate).round();
 
-            // 3. Precio de venta final oficial
+            // 3. Precio de venta final oficial (4 decimales en USD y Entero en Bs.)
             final double finalSaleUSD =
                 saleAddTax16 ? baseSaleUSD * 1.16 : baseSaleUSD;
-            final double finalSaleBs = finalSaleUSD * widget.exchangeRate;
+            final int finalSaleBsRounded =
+                (finalSaleUSD * widget.exchangeRate).round();
 
             // Función para aplicar la sugerencia de costo + ganancia al precio de venta
             void applySuggestedPriceToSale() {
@@ -141,9 +142,9 @@ class _AdminScreenState extends State<AdminScreen> {
 
                 setDialogState(() {
                   baseSaleUSD = suggestedBase;
-                  priceUsdCtrl.text = suggestedBase.toStringAsFixed(2);
+                  priceUsdCtrl.text = suggestedBase.toStringAsFixed(4);
                   priceBsCtrl.text =
-                      (suggestedBase * widget.exchangeRate).toStringAsFixed(2);
+                      (suggestedBase * widget.exchangeRate).round().toString();
                 });
               }
             }
@@ -413,13 +414,14 @@ class _AdminScreenState extends State<AdminScreen> {
                                           0.0;
                                       setDialogState(() {
                                         baseCostUSD = usd;
-                                        costBsCtrl.text = (usd *
-                                                widget.exchangeRate)
-                                            .toStringAsFixed(2);
+                                        costBsCtrl.text =
+                                            (usd * widget.exchangeRate)
+                                                .round()
+                                                .toString();
                                       });
                                     },
                                     decoration: customInputDecoration(
-                                      label: 'Costo en Dólares (\$ USD)',
+                                      label: 'Costo en Dólares (\$ 4 decimales)',
                                       prefixText: r'$ ',
                                     ),
                                   ),
@@ -443,7 +445,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                             ? bs / widget.exchangeRate
                                             : 0.0;
                                         costUsdCtrl.text =
-                                            baseCostUSD.toStringAsFixed(2);
+                                            baseCostUSD.toStringAsFixed(4);
                                       });
                                     },
                                     decoration: customInputDecoration(
@@ -543,7 +545,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          '➔ Costo unitario real:',
+                                          '➔ Costo unitario:',
                                           style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.bold,
@@ -552,7 +554,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                           ),
                                         ),
                                         Text(
-                                          '\$${realUnitCostUSD.toStringAsFixed(2)}  (Bs. ${realUnitCostBs.toStringAsFixed(2)})',
+                                          '\$${realUnitCostUSD.toStringAsFixed(4)}  (Bs. $realUnitCostBs)',
                                           style: TextStyle(
                                             fontSize: 13,
                                             fontWeight: FontWeight.w900,
@@ -582,7 +584,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
                       const SizedBox(height: 18),
 
-                      // 3. Fijación de Precio de Venta Oficial (Directo en $ o en Bs. + IVA Venta 16%)
+                      // 3. Fijación de Precio de Venta Oficial (4 decimales en $ y Entero en Bs.)
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -627,13 +629,14 @@ class _AdminScreenState extends State<AdminScreen> {
                                           0.0;
                                       setDialogState(() {
                                         baseSaleUSD = usd;
-                                        priceBsCtrl.text = (usd *
-                                                widget.exchangeRate)
-                                            .toStringAsFixed(2);
+                                        priceBsCtrl.text =
+                                            (usd * widget.exchangeRate)
+                                                .round()
+                                                .toString();
                                       });
                                     },
                                     decoration: customInputDecoration(
-                                      label: 'Precio Venta (\$ USD)',
+                                      label: 'Precio Venta (\$ 4 decimales)',
                                       prefixText: r'$ ',
                                     ),
                                   ),
@@ -657,11 +660,11 @@ class _AdminScreenState extends State<AdminScreen> {
                                             ? bs / widget.exchangeRate
                                             : 0.0;
                                         priceUsdCtrl.text =
-                                            baseSaleUSD.toStringAsFixed(2);
+                                            baseSaleUSD.toStringAsFixed(4);
                                       });
                                     },
                                     decoration: customInputDecoration(
-                                      label: 'Precio Venta (Bs.)',
+                                      label: 'Precio Venta (Bs. Entero)',
                                       prefixText: 'Bs. ',
                                     ),
                                   ),
@@ -754,7 +757,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                       ),
                                       if (saleAddTax16)
                                         Text(
-                                          'Base: Bs. ${(baseSaleUSD * widget.exchangeRate).toStringAsFixed(2)} + IVA: Bs. ${(baseSaleUSD * 0.16 * widget.exchangeRate).toStringAsFixed(2)}',
+                                          'Base: Bs. ${(baseSaleUSD * widget.exchangeRate).round()} + IVA: Bs. ${(baseSaleUSD * 0.16 * widget.exchangeRate).round()}',
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: theme.colorScheme.outline,
@@ -766,15 +769,15 @@ class _AdminScreenState extends State<AdminScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
-                                        'Bs. ${finalSaleBs.toStringAsFixed(2)}',
+                                        'Bs. $finalSaleBsRounded',
                                         style: const TextStyle(
-                                          fontSize: 22,
+                                          fontSize: 24,
                                           fontWeight: FontWeight.w900,
                                           color: Colors.green,
                                         ),
                                       ),
                                       Text(
-                                        '\$${finalSaleUSD.toStringAsFixed(2)} USD',
+                                        '\$${finalSaleUSD.toStringAsFixed(4)} USD',
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.bold,
@@ -972,7 +975,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
             const SizedBox(height: 16),
 
-            // Tabla de productos estilo Desktop
+            // Tabla de productos estilo Desktop (4 decimales en $)
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -1041,8 +1044,9 @@ class _AdminScreenState extends State<AdminScreen> {
                                                 fontWeight: FontWeight.bold))),
                                   ],
                                   rows: filtered.map((product) {
-                                    final priceInBs =
-                                        product.price * widget.exchangeRate;
+                                    final int priceInBsRounded =
+                                        (product.price * widget.exchangeRate)
+                                            .round();
 
                                     return DataRow(
                                       cells: [
@@ -1054,16 +1058,16 @@ class _AdminScreenState extends State<AdminScreen> {
                                             ? '-'
                                             : product.barcode)),
                                         DataCell(Text(product.costPrice > 0
-                                            ? '\$${product.costPrice.toStringAsFixed(2)}'
+                                            ? '\$${product.costPrice.toStringAsFixed(4)}'
                                             : '-')),
                                         DataCell(
                                             Text('${product.unitsPerPackage}')),
                                         DataCell(Text(product.unitCost > 0
-                                            ? '\$${product.unitCost.toStringAsFixed(2)}'
+                                            ? '\$${product.unitCost.toStringAsFixed(4)}'
                                             : '-')),
                                         DataCell(
                                           Text(
-                                            '\$${product.price.toStringAsFixed(2)}',
+                                            '\$${product.price.toStringAsFixed(4)}',
                                             style: TextStyle(
                                               fontWeight: FontWeight.w900,
                                               color: theme.colorScheme.primary,
@@ -1072,7 +1076,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                         ),
                                         DataCell(
                                           Text(
-                                            'Bs. ${priceInBs.toStringAsFixed(2)}',
+                                            'Bs. $priceInBsRounded',
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               color: Colors.green.shade800,
