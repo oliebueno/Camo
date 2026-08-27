@@ -1,16 +1,17 @@
-/// Modelo de Producto con soporte para cálculo por caja, precios unitarios y control de stock
+/// Modelo de Producto con soporte para venta por unidad o por peso (Kg/g), cálculo por caja y stock
 class Product {
   final String id;
   final String name;
   final String category;
-  final double price; // Precio de venta unitario final ($)
-  final double costPrice; // Costo de la caja o bulto ($)
-  final int unitsPerPackage; // Cantidad de unidades por caja
+  final double price; // Precio de venta ($ por unidad o por Kg)
+  final double costPrice; // Costo de la caja, saco o bloque ($)
+  final int unitsPerPackage; // Cantidad de unidades o Kg por bulto/bloque
   final double profitMargin; // % de ganancia
   final String barcode;
   final bool trackStock; // Habilitar o deshabilitar control de inventario
-  final int stock; // Cantidad en existencia (si trackStock es true)
+  final int stock; // Cantidad en existencia
   final String description;
+  final String unit; // 'unid' (Por Unidad) o 'kg' (Por Peso / Kilogramo)
 
   const Product({
     required this.id,
@@ -24,9 +25,13 @@ class Product {
     this.trackStock = true,
     this.stock = 0,
     this.description = '',
+    this.unit = 'unid',
   });
 
-  /// Costo unitario base calculado (Costo Caja / Unidades)
+  /// Indica si el producto se vende pesado (Queso, Jamón, Carne, Verduras)
+  bool get isWeighted => unit == 'kg';
+
+  /// Costo unitario base calculado (Costo Caja / Unidades o Kg)
   double get unitCost =>
       unitsPerPackage > 0 ? (costPrice / unitsPerPackage) : costPrice;
 
@@ -44,6 +49,7 @@ class Product {
       trackStock: json['track_stock'] as bool? ?? true,
       stock: (json['stock'] as num?)?.toInt() ?? 0,
       description: json['description'] as String? ?? '',
+      unit: json['unit'] as String? ?? 'unid',
     );
   }
 
@@ -58,8 +64,9 @@ class Product {
       'profit_margin': profitMargin,
       'barcode': barcode,
       'track_stock': trackStock,
-      'stock': trackStock ? stock : 0,
+      'stock': stock,
       'description': description,
+      'unit': unit,
     };
     if (includeId && id.isNotEmpty) {
       data['id'] = id;
@@ -79,6 +86,7 @@ class Product {
     bool? trackStock,
     int? stock,
     String? description,
+    String? unit,
   }) {
     return Product(
       id: id ?? this.id,
@@ -92,6 +100,7 @@ class Product {
       trackStock: trackStock ?? this.trackStock,
       stock: stock ?? this.stock,
       description: description ?? this.description,
+      unit: unit ?? this.unit,
     );
   }
 }

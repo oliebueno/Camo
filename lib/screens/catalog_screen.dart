@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
+import '../services/auth_service.dart';
 import '../services/bcv_service.dart';
 import '../services/supabase_service.dart';
 import '../widgets/product_card.dart';
@@ -115,15 +116,28 @@ class _CatalogScreenState extends State<CatalogScreen> {
 
   int get _cartTotalBsRounded => (_cartTotalUSD * _exchangeRate).round();
 
-  int get _cartItemCount =>
-      _cart.values.fold(0, (sum, item) => sum + item.quantity);
+  int get _cartItemCount => _cart.values.length;
 
   void _addToCart(Product product) {
     setState(() {
       if (_cart.containsKey(product.id)) {
-        _cart[product.id]!.quantity += 1;
+        _cart[product.id]!.quantity += 1.0;
       } else {
-        _cart[product.id] = CartItem(product: product, quantity: 1);
+        _cart[product.id] = CartItem(product: product, quantity: 1.0);
+      }
+    });
+  }
+
+  void _setProductWeight(Product product, double weight) {
+    setState(() {
+      if (weight <= 0) {
+        _cart.remove(product.id);
+      } else {
+        if (_cart.containsKey(product.id)) {
+          _cart[product.id]!.quantity = weight;
+        } else {
+          _cart[product.id] = CartItem(product: product, quantity: weight);
+        }
       }
     });
   }
@@ -131,8 +145,8 @@ class _CatalogScreenState extends State<CatalogScreen> {
   void _removeFromCart(Product product) {
     setState(() {
       if (_cart.containsKey(product.id)) {
-        if (_cart[product.id]!.quantity > 1) {
-          _cart[product.id]!.quantity -= 1;
+        if (_cart[product.id]!.quantity > 1.0) {
+          _cart[product.id]!.quantity -= 1.0;
         } else {
           _cart.remove(product.id);
         }
@@ -248,17 +262,130 @@ class _CatalogScreenState extends State<CatalogScreen> {
     setState(() {});
   }
 
-  void _openAdminScreen() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => AdminScreen(
-          exchangeRate: _exchangeRate,
-          onProductsChanged: () => _loadProducts(),
-        ),
-      ),
-    );
+  void _openAdminScreen() {
+    final passwordCtrl = TextEditingController();
+    bool isObscured = true;
+    String? errorMessage;
 
-    _loadProducts();
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final theme = Theme.of(context);
+
+            void submitPassword() async {
+              final isValid =
+                  await AuthService.verifyPassword(passwordCtrl.text);
+              if (isValid) {
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (!mounted) return;
+
+                await Navigator.of(this.context).push(
+                  MaterialPageRoute(
+                    builder: (context) => AdminScreen(
+                      exchangeRate: _exchangeRate,
+                      onProductsChanged: () => _loadProducts(),
+                    ),
+                  ),
+                );
+
+                _loadProducts();
+              } else {
+                setDialogState(() {
+                  errorMessage = 'Contraseña incorrecta. Intenta de nuevo.';
+                });
+              }
+            }
+
+            return AlertDialog(
+              backgroundColor: theme.colorScheme.surfaceContainerLow,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.lock_rounded,
+                      color: theme.colorScheme.onPrimaryContainer,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Acceso de Administrador',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 380,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Ingresa la contraseña para entrar al panel de gestión y precios:',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: passwordCtrl,
+                      obscureText: isObscured,
+                      autofocus: true,
+                      onSubmitted: (_) => submitPassword(),
+                      decoration: InputDecoration(
+                        labelText: 'Contraseña',
+                        prefixIcon: const Icon(Icons.key_rounded),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            isObscured
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              isObscured = !isObscured;
+                            });
+                          },
+                        ),
+                        errorText: errorMessage,
+                        filled: true,
+                        fillColor: theme.colorScheme.surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        isDense: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton.icon(
+                  onPressed: submitPassword,
+                  icon: const Icon(Icons.login_rounded, size: 18),
+                  label: const Text('Ingresar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -439,11 +566,14 @@ class _CatalogScreenState extends State<CatalogScreen> {
                             ],
                           )
                         : ListView.builder(
-                            padding: const EdgeInsets.only(top: 6, bottom: 100),
+                            padding: EdgeInsets.only(
+                              top: 6,
+                              bottom: 110 + MediaQuery.of(context).padding.bottom,
+                            ),
                             itemCount: filtered.length,
                             itemBuilder: (context, index) {
                               final product = filtered[index];
-                              final quantity = _cart[product.id]?.quantity ?? 0;
+                              final quantity = _cart[product.id]?.quantity ?? 0.0;
 
                               return ProductCard(
                                 key: ValueKey(product.id),
@@ -452,6 +582,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
                                 exchangeRate: _exchangeRate,
                                 onAdd: () => _addToCart(product),
                                 onRemove: () => _removeFromCart(product),
+                                onSetWeight: (w) => _setProductWeight(product, w),
                               );
                             },
                           ),
@@ -460,78 +591,81 @@ class _CatalogScreenState extends State<CatalogScreen> {
               ),
             ),
 
-      // 4. Barra Inferior Flotante de Total Dual ($ 4 decimales y Bs. entero)
+      // 4. Barra Inferior Flotante de Total Dual ($ 4 decimales y Bs. entero con protección para botones Android)
       bottomSheet: _cartItemCount > 0
           ? Container(
-              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 10,
-                    offset: const Offset(0, -3),
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 12,
+                    offset: const Offset(0, -4),
                   ),
                 ],
               ),
               child: SafeArea(
-                child: Row(
-                  children: [
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$_cartItemCount ${_cartItemCount == 1 ? "artículo" : "artículos"}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.colorScheme.outline,
-                            fontWeight: FontWeight.w500,
+                bottom: true,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$_cartItemCount ${_cartItemCount == 1 ? "artículo" : "artículos"}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: theme.colorScheme.outline,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Text(
+                                '\$${_cartTotalUSD.toStringAsFixed(4)}',
+                                style: TextStyle(
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.w900,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Bs. $_cartTotalBsRounded',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green.shade800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+
+                      FilledButton.icon(
+                        onPressed: _openCartScreen,
+                        icon: const Icon(Icons.arrow_forward_rounded),
+                        label: const Text(
+                          'Cobrar',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
-                          children: [
-                            Text(
-                              '\$${_cartTotalUSD.toStringAsFixed(4)}',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Bs. $_cartTotalBsRounded',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green.shade800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-
-                    FilledButton.icon(
-                      onPressed: _openCartScreen,
-                      icon: const Icon(Icons.arrow_forward_rounded),
-                      label: const Text(
-                        'Cobrar',
-                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             )

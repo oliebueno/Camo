@@ -35,6 +35,13 @@ class _CartScreenState extends State<CartScreen> {
   final double _taxRate = 0.16;
   double _discountPercent = 0.0;
 
+  // Monto adicional manual (ej: Avance de efectivo, Delivery, Bolsa, etc.)
+  double _extraChargeUSD = 0.0;
+  String _extraChargeConcept = 'Avance / Recargo';
+  final TextEditingController _extraChargeUsdCtrl = TextEditingController();
+  final TextEditingController _extraChargeBsCtrl = TextEditingController();
+  bool _showExtraChargeInput = false;
+
   // Cálculos en USD (4 decimales)
   double get _subtotalUSD =>
       widget.cart.values.fold(0.0, (sum, item) => sum + item.subtotal);
@@ -47,13 +54,14 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   double get _totalToPayUSD =>
-      (_subtotalUSD - _discountAmountUSD) + _taxAmountUSD;
+      (_subtotalUSD - _discountAmountUSD) + _taxAmountUSD + _extraChargeUSD;
 
   // Cálculos en Bolívares (Enteros sin decimales)
   int get _subtotalBs => (_subtotalUSD * widget.exchangeRate).round();
   int get _discountAmountBs =>
       (_discountAmountUSD * widget.exchangeRate).round();
   int get _taxAmountBs => (_taxAmountUSD * widget.exchangeRate).round();
+  int get _extraChargeBs => (_extraChargeUSD * widget.exchangeRate).round();
   int get _totalToPayBs => (_totalToPayUSD * widget.exchangeRate).round();
 
   // Cálculo de cambio / faltante según la moneda seleccionada
@@ -81,7 +89,7 @@ class _CartScreenState extends State<CartScreen> {
     for (final item in widget.cart.values) {
       final itemBsRounded = (item.subtotal * widget.exchangeRate).round();
       buffer.writeln(
-          '• ${item.quantity}x ${item.product.name}\n  \$${item.subtotal.toStringAsFixed(4)}  (Bs. $itemBsRounded)');
+          '• ${item.formattedQuantity} ${item.product.name}\n  \$${item.subtotal.toStringAsFixed(4)}  (Bs. $itemBsRounded)');
     }
     buffer.writeln('--------------------------------');
     buffer.writeln(
@@ -93,6 +101,10 @@ class _CartScreenState extends State<CartScreen> {
     if (_applyTax) {
       buffer.writeln(
           'IVA (${(_taxRate * 100).toInt()}%): +\$${_taxAmountUSD.toStringAsFixed(4)} (+Bs. $_taxAmountBs)');
+    }
+    if (_extraChargeUSD > 0) {
+      buffer.writeln(
+          '$_extraChargeConcept: +\$${_extraChargeUSD.toStringAsFixed(4)} (+Bs. $_extraChargeBs)');
     }
     buffer.writeln('--------------------------------');
     buffer.writeln('*TOTAL USD: \$${_totalToPayUSD.toStringAsFixed(4)}*');
@@ -150,6 +162,8 @@ class _CartScreenState extends State<CartScreen> {
   @override
   void dispose() {
     _cashReceivedController.dispose();
+    _extraChargeUsdCtrl.dispose();
+    _extraChargeBsCtrl.dispose();
     super.dispose();
   }
 
@@ -207,84 +221,92 @@ class _CartScreenState extends State<CartScreen> {
                 ],
               ),
             )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 1. Lista de productos
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Productos (${items.length})',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+          : SafeArea(
+              bottom: true,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  40 + MediaQuery.of(context).padding.bottom,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. Lista de productos
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Productos (${items.length})',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      Text(
-                        'Tasa: Bs. ${widget.exchangeRate.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: theme.colorScheme.outline,
-                          fontWeight: FontWeight.w600,
+                        Text(
+                          'Tasa: Bs. ${widget.exchangeRate.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.outline,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
 
-                  ...items.map((item) => _buildCartItemTile(item, theme)),
+                    ...items.map((item) => _buildCartItemTile(item, theme)),
 
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 20),
 
-                  // 2. Desglose Financiero Bimonetario
-                  _buildFinancialBreakdown(theme),
+                    // 2. Desglose Financiero Bimonetario + Recargos / Avances
+                    _buildFinancialBreakdown(theme),
 
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 20),
 
-                  // 3. Calculadora de Cambio / Vuelto
-                  _buildCashChangeCalculator(theme),
+                    // 3. Calculadora de Cambio / Vuelto
+                    _buildCashChangeCalculator(theme),
 
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
-                  // 4. Botones de Acción
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _shareReceipt,
-                          icon: const Icon(Icons.copy_rounded),
-                          label: const Text('Copiar Ticket'),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                    // 4. Botones de Acción
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _shareReceipt,
+                            icon: const Icon(Icons.copy_rounded),
+                            label: const Text('Copiar Ticket'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () {
-                            widget.onClearCart();
-                            Navigator.pop(context);
-                          },
-                          icon: const Icon(Icons.check_circle_outline_rounded),
-                          label: const Text('Nueva Venta'),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () {
+                              widget.onClearCart();
+                              Navigator.pop(context);
+                            },
+                            icon: const Icon(Icons.check_circle_outline_rounded),
+                            label: const Text('Nueva Venta'),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
     );
@@ -317,7 +339,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '\$${item.product.price.toStringAsFixed(4)} (Bs. ${(item.product.price * widget.exchangeRate).round()})',
+                    '\$${item.product.price.toStringAsFixed(4)}${item.product.isWeighted ? "/Kg" : ""} (Bs. ${(item.product.price * widget.exchangeRate).round()}${item.product.isWeighted ? "/Kg" : ""})',
                     style: TextStyle(
                       fontSize: 12,
                       color: theme.colorScheme.outline,
@@ -327,32 +349,48 @@ class _CartScreenState extends State<CartScreen> {
               ),
             ),
 
-            Row(
-              children: [
-                IconButton(
-                  onPressed: () {
-                    widget.onRemoveFromCart(item.product);
-                    setState(() {});
-                  },
-                  icon: const Icon(Icons.remove_circle_outline, size: 22),
-                  color: theme.colorScheme.primary,
-                ),
-                Text(
-                  '${item.quantity}',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      widget.onRemoveFromCart(item.product);
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.remove, size: 16),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                    color: theme.colorScheme.onPrimaryContainer,
                   ),
-                ),
-                IconButton(
-                  onPressed: () {
-                    widget.onAddToCart(item.product);
-                    setState(() {});
-                  },
-                  icon: const Icon(Icons.add_circle_outline, size: 22),
-                  color: theme.colorScheme.primary,
-                ),
-              ],
+                  const SizedBox(width: 4),
+                  Text(
+                    item.formattedQuantity,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  if (!item.product.isWeighted)
+                    IconButton(
+                      onPressed: () {
+                        widget.onAddToCart(item.product);
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.add, size: 16),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                ],
+              ),
             ),
 
             const SizedBox(width: 8),
@@ -441,7 +479,7 @@ class _CartScreenState extends State<CartScreen> {
 
           const SizedBox(height: 6),
 
-          // Switch de IVA
+          // Switch de IVA (16%)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -462,6 +500,143 @@ class _CartScreenState extends State<CartScreen> {
               '+\$${_taxAmountUSD.toStringAsFixed(4)}',
               '+Bs. $_taxAmountBs',
             ),
+          ],
+
+          const Divider(height: 16),
+
+          // Sección de Monto Adicional / Avance de Efectivo / Delivery
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.add_card_rounded,
+                      size: 18, color: theme.colorScheme.primary),
+                  const SizedBox(width: 8),
+                  const Text('Avance / Monto Adicional:',
+                      style:
+                          TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                ],
+              ),
+              IconButton.filledTonal(
+                icon: Icon(
+                  _showExtraChargeInput ? Icons.remove : Icons.add,
+                  size: 18,
+                ),
+                tooltip: 'Agregar avance o recargo manual',
+                onPressed: () {
+                  setState(() {
+                    _showExtraChargeInput = !_showExtraChargeInput;
+                    if (!_showExtraChargeInput) {
+                      _extraChargeUSD = 0.0;
+                      _extraChargeUsdCtrl.clear();
+                      _extraChargeBsCtrl.clear();
+                    }
+                  });
+                },
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
+
+          if (_showExtraChargeInput) ...[
+            const SizedBox(height: 8),
+            // Conceptos rápidos
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  'Avance Efectivo',
+                  'Delivery',
+                  'Embalaje / Bolsa',
+                  'Recargo Manual',
+                ].map((concept) {
+                  final isSel = _extraChargeConcept == concept;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(concept, style: const TextStyle(fontSize: 11)),
+                      selected: isSel,
+                      onSelected: (val) {
+                        if (val) setState(() => _extraChargeConcept = concept);
+                      },
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _extraChargeUsdCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    onChanged: (val) {
+                      final usd =
+                          double.tryParse(val.replaceAll(',', '.')) ?? 0.0;
+                      setState(() {
+                        _extraChargeUSD = usd;
+                        _extraChargeBsCtrl.text =
+                            (usd * widget.exchangeRate).round().toString();
+                      });
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Monto en \$ USD',
+                      prefixText: r'$ ',
+                      filled: true,
+                      fillColor: theme.colorScheme.surfaceContainerHighest,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.sync_alt_rounded, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _extraChargeBsCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    onChanged: (val) {
+                      final bs =
+                          double.tryParse(val.replaceAll(',', '.')) ?? 0.0;
+                      setState(() {
+                        _extraChargeUSD = widget.exchangeRate > 0
+                            ? bs / widget.exchangeRate
+                            : 0.0;
+                        _extraChargeUsdCtrl.text =
+                            _extraChargeUSD.toStringAsFixed(4);
+                      });
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Monto en Bs.',
+                      prefixText: 'Bs. ',
+                      filled: true,
+                      fillColor: theme.colorScheme.surfaceContainerHighest,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_extraChargeUSD > 0) ...[
+              const SizedBox(height: 6),
+              _buildDualRowDetail(
+                '+ $_extraChargeConcept',
+                '+\$${_extraChargeUSD.toStringAsFixed(4)}',
+                '+Bs. $_extraChargeBs',
+                color: Colors.amber.shade900,
+              ),
+            ],
           ],
 
           const Divider(height: 20),

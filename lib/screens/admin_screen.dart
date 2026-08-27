@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/product.dart';
+import '../services/auth_service.dart';
 import '../services/supabase_service.dart';
 
 /// Panel de Administración de Productos (Optimizado para Escritorio / Windows)
@@ -62,7 +63,7 @@ class _AdminScreenState extends State<AdminScreen> {
     }).toList();
   }
 
-  /// Diálogo inteligente para Crear o Editar un Producto
+  /// Diálogo inteligente para Crear o Editar un Producto (Unidades o Peso/Kg)
   void _openProductFormDialog({Product? productToEdit}) {
     final isEditing = productToEdit != null;
 
@@ -77,6 +78,7 @@ class _AdminScreenState extends State<AdminScreen> {
         TextEditingController(text: productToEdit?.description ?? '');
 
     bool trackStock = productToEdit?.trackStock ?? true;
+    String unitType = productToEdit?.unit ?? 'unid'; // 'unid' o 'kg'
 
     // --- VARIABLES DE COSTO DE COMPRA ---
     double baseCostUSD = productToEdit?.costPrice ?? 0.0;
@@ -113,15 +115,16 @@ class _AdminScreenState extends State<AdminScreen> {
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            final isKg = unitType == 'kg';
             final int units = int.tryParse(unitsCtrl.text) ?? 1;
             final double margin =
                 double.tryParse(marginCtrl.text.replaceAll(',', '.')) ?? 0.0;
 
-            // 1. Costo real total de la caja (con IVA de compra si aplica)
+            // 1. Costo real total (con IVA de compra si aplica)
             final double totalCostBoxUSD =
                 costAddTax16 ? baseCostUSD * 1.16 : baseCostUSD;
 
-            // 2. Costo unitario real (4 decimales en USD)
+            // 2. Costo unitario o por Kg real (4 decimales en USD)
             final double realUnitCostUSD =
                 units > 0 ? (totalCostBoxUSD / units) : totalCostBoxUSD;
             final int realUnitCostBs =
@@ -233,7 +236,7 @@ class _AdminScreenState extends State<AdminScreen> {
                     children: [
                       // 1. Datos Básicos
                       Text(
-                        '1. INFORMACIÓN GENERAL',
+                        '1. INFORMACIÓN GENERAL Y TIPO DE VENTA',
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 12,
@@ -242,6 +245,57 @@ class _AdminScreenState extends State<AdminScreen> {
                         ),
                       ),
                       const SizedBox(height: 10),
+
+                      // Selector de Tipo de Venta: Unidad vs Peso (Kg)
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainer,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: theme.colorScheme.outlineVariant
+                                .withValues(alpha: 0.5),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Text(
+                              'Tipo de Venta:',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: SegmentedButton<String>(
+                                segments: const [
+                                  ButtonSegment(
+                                    value: 'unid',
+                                    icon: Icon(Icons.inventory_2_outlined),
+                                    label: Text('Por Unidad'),
+                                  ),
+                                  ButtonSegment(
+                                    value: 'kg',
+                                    icon: Icon(Icons.scale_rounded),
+                                    label: Text('Por Peso (Kg / Quesos)'),
+                                  ),
+                                ],
+                                selected: {unitType},
+                                onSelectionChanged: (val) {
+                                  setDialogState(() {
+                                    unitType = val.first;
+                                  });
+                                },
+                                style: const ButtonStyle(
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
                       Row(
                         children: [
                           Expanded(
@@ -249,7 +303,9 @@ class _AdminScreenState extends State<AdminScreen> {
                             child: TextField(
                               controller: nameCtrl,
                               decoration: customInputDecoration(
-                                label: 'Nombre del Producto *',
+                                label: isKg
+                                    ? 'Nombre (Ej: Queso Blanco Paisa) *'
+                                    : 'Nombre del Producto *',
                               ),
                             ),
                           ),
@@ -259,7 +315,7 @@ class _AdminScreenState extends State<AdminScreen> {
                               controller: categoryCtrl,
                               decoration: customInputDecoration(
                                 label: 'Categoría',
-                                hintText: 'Ej: Víveres, Bebidas',
+                                hintText: isKg ? 'Charcutería' : 'Víveres',
                               ),
                             ),
                           ),
@@ -301,16 +357,20 @@ class _AdminScreenState extends State<AdminScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
-                                    'Controlar Existencias / Stock',
-                                    style: TextStyle(
+                                  Text(
+                                    isKg
+                                        ? 'Controlar Stock en Kilos (Kg)'
+                                        : 'Controlar Existencias / Stock',
+                                    style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
                                     ),
                                   ),
                                   Text(
                                     trackStock
-                                        ? 'Llevar conteo de unidades disponibles'
+                                        ? (isKg
+                                            ? 'Conteo de Kilos disponibles'
+                                            : 'Conteo de unidades disponibles')
                                         : 'Stock ilimitado (disponibilidad continua)',
                                     style: TextStyle(
                                       fontSize: 11,
@@ -336,7 +396,8 @@ class _AdminScreenState extends State<AdminScreen> {
                                   controller: stockCtrl,
                                   keyboardType: TextInputType.number,
                                   decoration: customInputDecoration(
-                                    label: 'Cantidad *',
+                                    label: isKg ? 'Total Kg *' : 'Cantidad *',
+                                    suffixText: isKg ? 'Kg' : null,
                                   ),
                                 ),
                               ),
@@ -347,7 +408,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
                       const SizedBox(height: 18),
 
-                      // 2. Costo de Compra / Caja (Soporte Dual $ y Bs. + IVA Compra 16%)
+                      // 2. Costo de Compra (Caja, Bulto o Bloque)
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -366,13 +427,18 @@ class _AdminScreenState extends State<AdminScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    Icon(Icons.shopping_bag_outlined,
+                                    Icon(
+                                        isKg
+                                            ? Icons.scale_rounded
+                                            : Icons.shopping_bag_outlined,
                                         size: 18,
                                         color: theme.colorScheme.primary),
                                     const SizedBox(width: 8),
-                                    const Text(
-                                      '2. Costo de Compra (Caja o Producto)',
-                                      style: TextStyle(
+                                    Text(
+                                      isKg
+                                          ? '2. Costo de Compra (Bloque / Pieza entera)'
+                                          : '2. Costo de Compra (Caja o Producto)',
+                                      style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 13,
                                       ),
@@ -421,7 +487,9 @@ class _AdminScreenState extends State<AdminScreen> {
                                       });
                                     },
                                     decoration: customInputDecoration(
-                                      label: 'Costo en Dólares (\$ 4 decimales)',
+                                      label: isKg
+                                          ? 'Costo Pieza (\$ USD)'
+                                          : 'Costo Caja (\$ USD)',
                                       prefixText: r'$ ',
                                     ),
                                   ),
@@ -449,7 +517,9 @@ class _AdminScreenState extends State<AdminScreen> {
                                       });
                                     },
                                     decoration: customInputDecoration(
-                                      label: 'Costo en Bolívares (Bs.)',
+                                      label: isKg
+                                          ? 'Costo Pieza (Bs.)'
+                                          : 'Costo Caja (Bs.)',
                                       prefixText: 'Bs. ',
                                     ),
                                   ),
@@ -496,7 +566,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
                             const SizedBox(height: 10),
 
-                            // Unidades por caja y Margen %
+                            // Unidades/Kg y Margen %
                             Row(
                               children: [
                                 Expanded(
@@ -505,8 +575,11 @@ class _AdminScreenState extends State<AdminScreen> {
                                     keyboardType: TextInputType.number,
                                     onChanged: (_) => setDialogState(() {}),
                                     decoration: customInputDecoration(
-                                      label: 'Unidades en Caja/Bulto',
-                                      hintText: '1 si es unidad suelta',
+                                      label: isKg
+                                          ? 'Peso Total de la Pieza (Kg)'
+                                          : 'Unidades en Caja/Bulto',
+                                      suffixText: isKg ? 'Kg' : null,
+                                      hintText: isKg ? 'Ej: 5' : '1',
                                     ),
                                   ),
                                 ),
@@ -545,7 +618,9 @@ class _AdminScreenState extends State<AdminScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          '➔ Costo unitario:',
+                                          isKg
+                                              ? '➔ Costo real por Kilo (Kg):'
+                                              : '➔ Costo real por unidad:',
                                           style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.bold,
@@ -554,7 +629,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                           ),
                                         ),
                                         Text(
-                                          '\$${realUnitCostUSD.toStringAsFixed(4)}  (Bs. $realUnitCostBs)',
+                                          '\$${realUnitCostUSD.toStringAsFixed(4)}${isKg ? "/Kg" : ""}  (Bs. $realUnitCostBs${isKg ? "/Kg" : ""})',
                                           style: TextStyle(
                                             fontSize: 13,
                                             fontWeight: FontWeight.w900,
@@ -584,7 +659,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
                       const SizedBox(height: 18),
 
-                      // 3. Fijación de Precio de Venta Oficial (4 decimales en $ y Entero en Bs.)
+                      // 3. Fijación de Precio de Venta Oficial (por Unidad o por Kg)
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -604,9 +679,11 @@ class _AdminScreenState extends State<AdminScreen> {
                                     size: 18,
                                     color: theme.colorScheme.primary),
                                 const SizedBox(width: 8),
-                                const Text(
-                                  '3. Precio de Venta Unitario (El que verá el vendedor)',
-                                  style: TextStyle(
+                                Text(
+                                  isKg
+                                      ? '3. Precio de Venta por Kilo (Kg)'
+                                      : '3. Precio de Venta Unitario',
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 13,
                                   ),
@@ -636,8 +713,11 @@ class _AdminScreenState extends State<AdminScreen> {
                                       });
                                     },
                                     decoration: customInputDecoration(
-                                      label: 'Precio Venta (\$ 4 decimales)',
+                                      label: isKg
+                                          ? 'Precio (\$ USD / Kg)'
+                                          : 'Precio Venta (\$ USD)',
                                       prefixText: r'$ ',
+                                      suffixText: isKg ? '/Kg' : null,
                                     ),
                                   ),
                                 ),
@@ -664,8 +744,11 @@ class _AdminScreenState extends State<AdminScreen> {
                                       });
                                     },
                                     decoration: customInputDecoration(
-                                      label: 'Precio Venta (Bs. Entero)',
+                                      label: isKg
+                                          ? 'Precio (Bs. / Kg)'
+                                          : 'Precio Venta (Bs.)',
                                       prefixText: 'Bs. ',
+                                      suffixText: isKg ? '/Kg' : null,
                                     ),
                                   ),
                                 ),
@@ -711,7 +794,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                         ),
                                         Text(
                                           saleAddTax16
-                                              ? 'Se sumará 16% de IVA al precio final al cliente'
+                                              ? 'Se sumará 16% de IVA al precio final'
                                               : 'El precio ingresado ya es el monto final a cobrar (o exento)',
                                           style: TextStyle(
                                             fontSize: 11,
@@ -748,7 +831,9 @@ class _AdminScreenState extends State<AdminScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'PRECIO FINAL OFICIAL DE VENTA:',
+                                        isKg
+                                            ? 'PRECIO FINAL OFICIAL POR KILO (Kg):'
+                                            : 'PRECIO FINAL OFICIAL DE VENTA:',
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,
@@ -769,7 +854,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
-                                        'Bs. $finalSaleBsRounded',
+                                        'Bs. $finalSaleBsRounded${isKg ? "/Kg" : ""}',
                                         style: const TextStyle(
                                           fontSize: 24,
                                           fontWeight: FontWeight.w900,
@@ -777,7 +862,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                         ),
                                       ),
                                       Text(
-                                        '\$${finalSaleUSD.toStringAsFixed(4)} USD',
+                                        '\$${finalSaleUSD.toStringAsFixed(4)} USD${isKg ? "/Kg" : ""}',
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.bold,
@@ -830,7 +915,7 @@ class _AdminScreenState extends State<AdminScreen> {
                       id: isEditing ? productToEdit.id : '',
                       name: name,
                       category: categoryCtrl.text.trim().isEmpty
-                          ? 'General'
+                          ? (isKg ? 'Charcutería' : 'General')
                           : categoryCtrl.text.trim(),
                       price: finalSaleUSD,
                       costPrice: totalCostBoxUSD,
@@ -842,6 +927,7 @@ class _AdminScreenState extends State<AdminScreen> {
                           ? (int.tryParse(stockCtrl.text) ?? 0)
                           : 0,
                       description: descCtrl.text.trim(),
+                      unit: unitType,
                     );
 
                     Navigator.pop(context);
@@ -892,6 +978,147 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
+  void _openChangePasswordDialog() {
+    final currentPassCtrl = TextEditingController();
+    final newPassCtrl = TextEditingController();
+    final confirmPassCtrl = TextEditingController();
+    String? errorText;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final theme = Theme.of(context);
+
+          void submitChange() async {
+            final isValid =
+                await AuthService.verifyPassword(currentPassCtrl.text);
+            if (!isValid) {
+              setDialogState(() {
+                errorText = 'La contraseña actual no es correcta.';
+              });
+              return;
+            }
+
+            final newPass = newPassCtrl.text.trim();
+            if (newPass.length < 4) {
+              setDialogState(() {
+                errorText = 'La nueva contraseña debe tener al menos 4 caracteres.';
+              });
+              return;
+            }
+
+            if (newPass != confirmPassCtrl.text.trim()) {
+              setDialogState(() {
+                errorText = 'Las nuevas contraseñas no coinciden.';
+              });
+              return;
+            }
+
+            await AuthService.changeAdminPassword(newPass);
+            if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+
+            if (!mounted) return;
+            ScaffoldMessenger.of(this.context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Contraseña de administrador actualizada con éxito'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+
+          return AlertDialog(
+            backgroundColor: theme.colorScheme.surfaceContainerLow,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.password_rounded,
+                      color: theme.colorScheme.onPrimaryContainer, size: 22),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Cambiar Contraseña',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 380,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: currentPassCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Contraseña Actual',
+                      prefixIcon: Icon(Icons.lock_outline),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: newPassCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Nueva Contraseña',
+                      prefixIcon: Icon(Icons.lock_reset_rounded),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmPassCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirmar Nueva Contraseña',
+                      prefixIcon: Icon(Icons.check_rounded),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      errorText!,
+                      style: const TextStyle(
+                          color: Colors.red,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: submitChange,
+                child: const Text('Guardar Contraseña'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -919,6 +1146,13 @@ class _AdminScreenState extends State<AdminScreen> {
             backgroundColor: theme.colorScheme.secondaryContainer,
           ),
           const SizedBox(width: 8),
+
+          IconButton(
+            icon: const Icon(Icons.key_rounded),
+            tooltip: 'Cambiar Contraseña de Administrador',
+            onPressed: _openChangePasswordDialog,
+          ),
+          const SizedBox(width: 4),
 
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -975,7 +1209,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
             const SizedBox(height: 16),
 
-            // Tabla de productos estilo Desktop (4 decimales en $)
+            // Tabla de productos estilo Desktop
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -1007,6 +1241,10 @@ class _AdminScreenState extends State<AdminScreen> {
                                             style: TextStyle(
                                                 fontWeight: FontWeight.bold))),
                                     DataColumn(
+                                        label: Text('Tipo / Unidad',
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold))),
+                                    DataColumn(
                                         label: Text('Categoría',
                                             style: TextStyle(
                                                 fontWeight: FontWeight.bold))),
@@ -1015,15 +1253,15 @@ class _AdminScreenState extends State<AdminScreen> {
                                             style: TextStyle(
                                                 fontWeight: FontWeight.bold))),
                                     DataColumn(
-                                        label: Text(r'Costo Caja ($)',
+                                        label: Text(r'Costo Bulto/Bloque ($)',
                                             style: TextStyle(
                                                 fontWeight: FontWeight.bold))),
                                     DataColumn(
-                                        label: Text('Unids/Caja',
+                                        label: Text('Unids/Kg',
                                             style: TextStyle(
                                                 fontWeight: FontWeight.bold))),
                                     DataColumn(
-                                        label: Text(r'Costo Unit ($)',
+                                        label: Text(r'Costo Unit/Kg ($)',
                                             style: TextStyle(
                                                 fontWeight: FontWeight.bold))),
                                     DataColumn(
@@ -1053,6 +1291,31 @@ class _AdminScreenState extends State<AdminScreen> {
                                         DataCell(Text(product.name,
                                             style: const TextStyle(
                                                 fontWeight: FontWeight.w600))),
+                                        DataCell(
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: product.isWeighted
+                                                  ? Colors.amber.shade100
+                                                  : Colors.grey.shade200,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              product.isWeighted
+                                                  ? '⚖️ Peso (Kg)'
+                                                  : 'Unidad',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: product.isWeighted
+                                                    ? Colors.amber.shade900
+                                                    : Colors.grey.shade800,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                         DataCell(Text(product.category)),
                                         DataCell(Text(product.barcode.isEmpty
                                             ? '-'
@@ -1061,13 +1324,13 @@ class _AdminScreenState extends State<AdminScreen> {
                                             ? '\$${product.costPrice.toStringAsFixed(4)}'
                                             : '-')),
                                         DataCell(
-                                            Text('${product.unitsPerPackage}')),
+                                            Text('${product.unitsPerPackage}${product.isWeighted ? " Kg" : ""}')),
                                         DataCell(Text(product.unitCost > 0
                                             ? '\$${product.unitCost.toStringAsFixed(4)}'
                                             : '-')),
                                         DataCell(
                                           Text(
-                                            '\$${product.price.toStringAsFixed(4)}',
+                                            '\$${product.price.toStringAsFixed(4)}${product.isWeighted ? "/Kg" : ""}',
                                             style: TextStyle(
                                               fontWeight: FontWeight.w900,
                                               color: theme.colorScheme.primary,
@@ -1076,7 +1339,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                         ),
                                         DataCell(
                                           Text(
-                                            'Bs. $priceInBsRounded',
+                                            'Bs. $priceInBsRounded${product.isWeighted ? "/Kg" : ""}',
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               color: Colors.green.shade800,
@@ -1085,7 +1348,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                         ),
                                         DataCell(
                                           product.trackStock
-                                              ? Text('${product.stock}')
+                                              ? Text('${product.stock}${product.isWeighted ? " Kg" : ""}')
                                               : Container(
                                                   padding: const EdgeInsets
                                                       .symmetric(
